@@ -15,26 +15,29 @@
       background: linear-gradient(180deg, #0e1d3a, #06091a);
       border: 2px solid #3a6fbf;
       border-radius: 14px;
-      padding: 36px 40px;
+      padding: 22px 28px;
       box-shadow: 0 0 40px rgba(80, 140, 255, 0.3);
     }
+    .h-title { font-size: 24px; color: #ffe27a; text-align: center; margin-bottom: 6px; }
 
     .h-code-block {
       text-align: center;
-      padding: 32px;
+      padding: 14px;
       background: rgba(255, 226, 122, 0.06);
       border: 2px solid rgba(255, 226, 122, 0.4);
-      border-radius: 12px;
-      margin: 20px 0;
+      border-radius: 10px;
+      margin: 10px 0;
     }
-    .h-code-label { color: #aac; font-size: 14px; letter-spacing: 2px; margin-bottom: 8px; }
+    .h-code-label { color: #aac; font-size: 11px; letter-spacing: 2px; margin-bottom: 4px; }
     .h-code {
-      font-size: 110px; font-weight: 900;
+      font-size: 56px; font-weight: 900;
       color: #ffe27a;
-      letter-spacing: 14px;
+      letter-spacing: 8px;
       font-family: 'Courier New', monospace;
-      text-shadow: 0 0 24px rgba(255, 226, 122, 0.4);
+      text-shadow: 0 0 18px rgba(255, 226, 122, 0.4);
+      line-height: 1.1;
     }
+    .h-code-block .join-url-hint { color:#aac; font-size:11px; margin-top:8px; }
 
     .pin-input, .text-input {
       width: 100%;
@@ -52,11 +55,11 @@
     .pin-input:focus, .text-input:focus { outline: none; border-color: #7ec8ff; }
 
     .h-players-list {
-      max-height: 50vh; overflow-y: auto;
+      max-height: 22vh; overflow-y: auto;
       background: rgba(0, 0, 0, 0.4);
       border-radius: 8px;
-      padding: 12px;
-      margin: 16px 0;
+      padding: 8px;
+      margin: 10px 0 0 0;
     }
     .h-player-row {
       display: flex; justify-content: space-between; align-items: center;
@@ -114,27 +117,27 @@
     .h-actions { display: flex; gap: 12px; margin-top: 18px; }
     .h-actions .btn { flex: 1; }
 
-    .status {
-      text-align: center;
-      padding: 12px;
-      background: rgba(255, 226, 122, 0.08);
-      border-left: 3px solid #ffe27a;
-      border-radius: 4px;
-      margin: 12px 0;
-      font-size: 14px;
-    }
     .tutorial-box {
       background: rgba(255, 226, 122, 0.08);
       border-left: 4px solid #ffe27a;
       border-radius: 6px;
-      padding: 14px 18px;
-      margin-top: 16px;
+      padding: 10px 14px;
+      margin-top: 10px;
       text-align: left;
     }
-    .tutorial-box h3 { color: #ffe27a; font-size: 16px; margin-bottom: 8px; font-weight: bold; }
+    .tutorial-box h3 { color: #ffe27a; font-size: 14px; margin-bottom: 4px; font-weight: bold; }
     .tutorial-box ul { list-style: none; padding: 0; margin: 0; }
-    .tutorial-box li { padding: 4px 0; font-size: 14px; color: #ccd; line-height: 1.5; }
-    .tutorial-box li::before { content: "•"; color: #ffe27a; margin-right: 8px; }
+    .tutorial-box li { padding: 2px 0; font-size: 13px; color: #ccd; line-height: 1.4; }
+    .tutorial-box li::before { content: "•"; color: #ffe27a; margin-right: 6px; }
+    .status {
+      text-align: center;
+      padding: 8px;
+      background: rgba(255, 226, 122, 0.08);
+      border-left: 3px solid #ffe27a;
+      border-radius: 4px;
+      margin: 8px 0;
+      font-size: 13px;
+    }
   </style>
 </head>
 <body>
@@ -150,18 +153,10 @@
 
     <div id="step-lobby" class="h-card" style="display:none;">
       <h1 class="h-title">📢 Lobby</h1>
-      <div class="h-subtitle">SHARE THIS CODE WITH PLAYERS</div>
       <div class="h-code-block">
         <div class="h-code-label">GAME CODE</div>
         <div class="h-code" id="game-code">----</div>
-        <div style="color:#aac; font-size:13px; margin-top:14px;">Players join at <strong id="join-url">/join</strong></div>
-      </div>
-      <div class="status">
-        <span id="player-count">0</span> player(s) joined · Waiting for host to start
-      </div>
-      <button class="btn" id="start-btn" style="width:100%; font-size:22px; padding:18px;">▶ Start Game</button>
-      <div class="h-players-list" id="lobby-players" style="margin-top:18px;">
-        <div class="h-empty">Waiting for players...</div>
+        <div class="join-url-hint">Players join at <strong id="join-url">/join</strong></div>
       </div>
       <div class="tutorial-box">
         <h3>🧬 How players will play</h3>
@@ -170,8 +165,14 @@
           <li><strong>Die?</strong> → biology question pops up. Right = keep going. Wrong = restart level</li>
           <li><strong>Level up:</strong> answer <strong>3 questions</strong> correctly between levels</li>
           <li><strong>Win:</strong> first <strong>3 players</strong> to finish Level 4 take the podium 🥇🥈🥉</li>
-          <li>The instant the 3rd person finishes, the game ends for everyone</li>
         </ul>
+      </div>
+      <div class="status">
+        <span id="player-count">0</span> player(s) joined · Waiting for host to start
+      </div>
+      <button class="btn" id="start-btn" style="width:100%; font-size:20px; padding:14px;">▶ Start Game</button>
+      <div class="h-players-list" id="lobby-players">
+        <div class="h-empty">Waiting for players...</div>
       </div>
     </div>
 
