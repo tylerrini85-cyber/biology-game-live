@@ -91,16 +91,39 @@
       step.style.display = 'block';
     }
 
-    codeSubmit.addEventListener('click', () => {
+    codeSubmit.addEventListener('click', async () => {
       const code = codeInput.value.trim();
       if (!/^\d{4,6}$/.test(code)) {
         codeError.textContent = 'Code must be 4-6 digits';
         return;
       }
-      codeError.textContent = '';
-      sessionStorage.setItem('biolive_code', code);
-      show(stepName);
-      nameInput.focus();
+      codeError.style.color = '#ccab78';
+      codeError.textContent = 'Checking...';
+      codeSubmit.disabled = true;
+      try {
+        const res = await fetch(`/api/check-code?code=${encodeURIComponent(code)}`);
+        const data = await res.json();
+        codeError.style.color = '#ff6c6c';
+        if (!data.exists) {
+          codeError.textContent = '✗ No active game with that code. Try again.';
+          codeInput.value = '';
+          codeInput.focus();
+        } else if (data.gameOver) {
+          codeError.textContent = '✗ That game has already ended. Try a different code.';
+          codeInput.value = '';
+          codeInput.focus();
+        } else {
+          codeError.textContent = '';
+          sessionStorage.setItem('biolive_code', code);
+          show(stepName);
+          nameInput.focus();
+        }
+      } catch (err) {
+        codeError.style.color = '#ff6c6c';
+        codeError.textContent = 'Error reaching server. Try again.';
+      } finally {
+        codeSubmit.disabled = false;
+      }
     });
     codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') codeSubmit.click(); });
 

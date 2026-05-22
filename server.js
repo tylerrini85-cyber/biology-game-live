@@ -118,6 +118,20 @@ function checkGameEnd(session) {
 // ----- HTTP server (static + routes) -----
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+
+  // Tiny JSON API: check if a game code is valid before joining.
+  if (urlPath === '/api/check-code') {
+    const u = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const code = String(u.searchParams.get('code') || '').trim();
+    const s = sessions.get(code);
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+    return res.end(JSON.stringify({
+      exists: !!s,
+      gameOver: s ? !!s.gameOver : false,
+      started: s ? !!s.started : false
+    }));
+  }
+
   if (ROUTE_TO_FILE[urlPath]) urlPath = ROUTE_TO_FILE[urlPath];
 
   const safePath = path.normalize(urlPath).replace(/^(\.\.[\/\\])+/, '');

@@ -27,10 +27,22 @@
   let finishedReported = false;
   let myPlace = null;
 
-  function showWait(title, sub) {
+  function showWait(title, sub, opts) {
     waitTitle.textContent = title;
     waitSub.textContent = sub;
     waitOverlay.style.display = 'flex';
+    const card = waitOverlay.querySelector('.mp-wait-card');
+    // Remove any retry button from a previous showWait call
+    const oldBtn = card.querySelector('.mp-retry-btn');
+    if (oldBtn) oldBtn.remove();
+    if (opts && opts.retry) {
+      const btn = document.createElement('button');
+      btn.className = 'btn mp-retry-btn';
+      btn.style.cssText = 'width:100%; margin-top:14px;';
+      btn.textContent = '↺ Try a different code';
+      btn.onclick = () => location.href = '/join';
+      card.appendChild(btn);
+    }
   }
   function hideWait() {
     waitOverlay.style.display = 'none';
@@ -97,7 +109,7 @@
     } else if (msg.type === 'host:disconnected') {
       showWait('⚠ Host left', 'The host disconnected.');
     } else if (msg.type === 'error') {
-      showWait('⚠ ' + (msg.message || 'Error'), 'Please go back and try again.');
+      showWait('⚠ ' + (msg.message || 'Error'), 'Click below to enter a different code.', { retry: true });
     }
   }
 
