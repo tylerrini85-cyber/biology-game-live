@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Host — Cellular Respiration Live</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .host-wrap { max-width: 1100px; width: 100%; }
+    .h-title { font-size: 32px; color: #ffe27a; text-align: center; margin-bottom: 12px; }
+    .h-subtitle { color: #aac; text-align: center; margin-bottom: 30px; font-size: 14px; letter-spacing: 1px; }
+
+    .h-card {
+      background: linear-gradient(180deg, #0e1d3a, #06091a);
+      border: 2px solid #3a6fbf;
+      border-radius: 14px;
+      padding: 36px 40px;
+      box-shadow: 0 0 40px rgba(80, 140, 255, 0.3);
+    }
+
+    .h-code-block {
+      text-align: center;
+      padding: 32px;
+      background: rgba(255, 226, 122, 0.06);
+      border: 2px solid rgba(255, 226, 122, 0.4);
+      border-radius: 12px;
+      margin: 20px 0;
+    }
+    .h-code-label { color: #aac; font-size: 14px; letter-spacing: 2px; margin-bottom: 8px; }
+    .h-code {
+      font-size: 110px; font-weight: 900;
+      color: #ffe27a;
+      letter-spacing: 14px;
+      font-family: 'Courier New', monospace;
+      text-shadow: 0 0 24px rgba(255, 226, 122, 0.4);
+    }
+
+    .pin-input, .text-input {
+      width: 100%;
+      padding: 16px 20px;
+      font-size: 22px;
+      background: rgba(40, 60, 100, 0.6);
+      border: 2px solid #3a6fbf;
+      border-radius: 8px;
+      color: white;
+      text-align: center;
+      letter-spacing: 6px;
+      font-family: 'Courier New', monospace;
+    }
+    .text-input { letter-spacing: 1px; }
+    .pin-input:focus, .text-input:focus { outline: none; border-color: #7ec8ff; }
+
+    .h-players-list {
+      max-height: 50vh; overflow-y: auto;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 8px;
+      padding: 12px;
+      margin: 16px 0;
+    }
+    .h-player-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 10px 14px;
+      background: rgba(40, 70, 120, 0.45);
+      border-left: 3px solid #6cf06c;
+      border-radius: 4px;
+      margin-bottom: 6px;
+      font-size: 16px;
+    }
+    .h-empty { text-align: center; color: #7a8aa8; padding: 24px; font-style: italic; }
+
+    .dash-row {
+      display: grid;
+      grid-template-columns: 32px 1fr 90px 70px;
+      gap: 12px;
+      align-items: center;
+      padding: 8px 12px;
+      background: rgba(40, 70, 120, 0.4);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 18px;
+    }
+    .dash-row.finished { background: rgba(108, 240, 108, 0.18); border: 1px solid #6cf06c; }
+    .dash-row .rank { color: #ffe27a; font-weight: bold; text-align: center; }
+    .dash-row .name { font-weight: bold; }
+    .dash-row .bar-wrap {
+      grid-column: 1 / -1;
+      background: rgba(0, 0, 0, 0.4);
+      border-radius: 4px;
+      height: 8px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    .dash-row .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #7ec8ff, #6cf06c, #ffe27a);
+      transition: width 0.35s ease-out;
+    }
+    .dash-row.finished .bar-fill { background: #6cf06c; }
+    .dash-row .pct  { text-align: right; color: #7ec8ff; font-family: 'Courier New', monospace; }
+    .dash-row .atp  { text-align: right; color: #ffe27a; font-family: 'Courier New', monospace; }
+    .place-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .place-1 { background: gold; color: #000; }
+    .place-2 { background: silver; color: #000; }
+    .place-3 { background: #cd7f32; color: #fff; }
+
+    .h-actions { display: flex; gap: 12px; margin-top: 18px; }
+    .h-actions .btn { flex: 1; }
+
+    .status {
+      text-align: center;
+      padding: 12px;
+      background: rgba(255, 226, 122, 0.08);
+      border-left: 3px solid #ffe27a;
+      border-radius: 4px;
+      margin: 12px 0;
+      font-size: 14px;
+    }
+    .tutorial-box {
+      background: rgba(255, 226, 122, 0.08);
+      border-left: 4px solid #ffe27a;
+      border-radius: 6px;
+      padding: 14px 18px;
+      margin-top: 16px;
+      text-align: left;
+    }
+    .tutorial-box h3 { color: #ffe27a; font-size: 16px; margin-bottom: 8px; font-weight: bold; }
+    .tutorial-box ul { list-style: none; padding: 0; margin: 0; }
+    .tutorial-box li { padding: 4px 0; font-size: 14px; color: #ccd; line-height: 1.5; }
+    .tutorial-box li::before { content: "•"; color: #ffe27a; margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <div class="host-wrap">
+    <a href="/" style="display:block; color:#7a8aa8; text-decoration:none; font-size:13px; margin-bottom:14px;">← Back to home (Host or Guest)</a>
+    <div id="step-pin" class="h-card" style="max-width:480px; margin:0 auto;">
+      <h1 class="h-title">🎓 Host a game</h1>
+      <p style="text-align:center; color:#aac;">Enter the host PIN to start a new session.</p>
+      <input id="pin-input" class="pin-input" type="password" placeholder="• • •" maxlength="6" inputmode="numeric">
+      <div id="pin-error" style="color:#ff6c6c; text-align:center; min-height:20px; margin-top:8px;"></div>
+      <button class="btn" id="pin-submit" style="width:100%; margin-top:14px;">Create Session</button>
+    </div>
+
+    <div id="step-lobby" class="h-card" style="display:none;">
+      <h1 class="h-title">📢 Lobby</h1>
+      <div class="h-subtitle">SHARE THIS CODE WITH PLAYERS</div>
+      <div class="h-code-block">
+        <div class="h-code-label">GAME CODE</div>
+        <div class="h-code" id="game-code">----</div>
+        <div style="color:#aac; font-size:13px; margin-top:14px;">Players join at <strong id="join-url">/join</strong></div>
+      </div>
+      <div class="status">
+        <span id="player-count">0</span> player(s) joined · Waiting for host to start
+      </div>
+      <div class="h-players-list" id="lobby-players">
+        <div class="h-empty">Waiting for players...</div>
+      </div>
+      <div class="tutorial-box">
+        <h3>🧬 How players will play</h3>
+        <ul>
+          <li><strong>SPACE</strong> = jump (hold for higher)</li>
+          <li><strong>Die?</strong> → biology question pops up. Right = keep going. Wrong = restart level</li>
+          <li><strong>Level up:</strong> answer <strong>3 questions</strong> correctly between levels</li>
+          <li><strong>Win:</strong> first <strong>3 players</strong> to finish Level 4 take the podium 🥇🥈🥉</li>
+          <li>The instant the 3rd person finishes, the game ends for everyone</li>
+        </ul>
+      </div>
+      <button class="btn" id="start-btn" style="width:100%;">▶ Start Game</button>
+    </div>
+
+    <div id="step-dashboard" class="h-card" style="display:none;">
+      <h1 class="h-title">🎮 Live Dashboard</h1>
+      <div class="h-subtitle">FIRST 3 TO FINISH WIN · GAME ENDS WHEN 3 PLAYERS REACH 100%</div>
+      <div id="dashboard-rows"></div>
+    </div>
+
+    <div id="step-over" class="h-card" style="display:none;">
+      <h1 class="h-title">🏁 Game Over</h1>
+      <div id="podium" style="margin: 20px 0;"></div>
+      <h2 style="color:#ffe27a; margin-top:24px;">Final Standings</h2>
+      <div id="final-rows"></div>
+      <button class="btn" style="width:100%; margin-top:18px;" onclick="location.href='/host'">▶ Host Another Game</button>
+    </div>
+  </div>
+
+  <script src="host.js"></script>
+</body>
+</html>

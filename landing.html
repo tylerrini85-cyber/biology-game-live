@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cellular Respiration — Live Mode</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+    .lp-wrap { max-width: 560px; width: 100%; text-align: center; }
+    .lp-title {
+      font-size: 56px; font-weight: 900;
+      background: linear-gradient(90deg, #ffe27a, #ff9a9a, #7ec8ff);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+    .lp-sub { color: #aac; font-size: 18px; margin-bottom: 36px; }
+    .lp-buttons { display: flex; flex-direction: column; gap: 16px; }
+    .lp-btn {
+      background: linear-gradient(180deg, #4a8fff, #2a5fcf);
+      border: 3px solid #6cb0ff;
+      color: white;
+      padding: 22px 28px;
+      font-size: 22px; font-weight: bold;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+      box-shadow: 0 0 20px rgba(74, 143, 255, 0.4);
+    }
+    .lp-btn:hover { transform: scale(1.03); background: linear-gradient(180deg, #5a9fff, #3a6fdf); }
+    .lp-btn.host { background: linear-gradient(180deg, #d4a017, #a07810); border-color: #ffe27a; box-shadow: 0 0 20px rgba(212, 160, 23, 0.4); }
+    .lp-btn.host:hover { background: linear-gradient(180deg, #ffe27a, #d4a017); }
+    .lp-btn .emoji { font-size: 28px; margin-right: 8px; }
+    .lp-link { display: block; margin-top: 30px; color: #7a8aa8; font-size: 13px; text-decoration: none; }
+    .lp-link:hover { color: #aac; }
+  </style>
+</head>
+<body>
+  <div class="lp-wrap">
+    <div class="lp-title">CELLULAR RESPIRATION</div>
+    <div class="lp-sub">Live multiplayer mode · Race classmates through the glucose journey</div>
+    <div class="lp-buttons">
+      <button class="lp-btn host" onclick="location.href='/host'">
+        <span class="emoji">🎓</span>HOST A GAME
+      </button>
+      <button class="lp-btn" onclick="location.href='/join'">
+        <span class="emoji">🎮</span>JOIN AS GUEST
+      </button>
+    </div>
+    <a class="lp-link" href="/index.html">▸ Solo practice (no multiplayer)</a>
+  </div>
+</body>
+</html>

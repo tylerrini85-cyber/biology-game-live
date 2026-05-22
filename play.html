@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cellular Respiration — Live</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* Overlay shown over the entire game while waiting for host */
+    #mp-wait-overlay {
+      position: fixed; inset: 0;
+      background: rgba(6, 9, 26, 0.95);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;
+    }
+    .mp-wait-card {
+      background: linear-gradient(180deg, #0e1d3a, #06091a);
+      border: 2px solid #3a6fbf;
+      border-radius: 14px;
+      padding: 32px 40px;
+      text-align: center;
+      max-width: 540px;
+    }
+    .mp-wait-card h1 { font-size: 30px; color: #7ec8ff; margin-bottom: 10px; }
+    .mp-wait-card p  { color: #aac; margin-bottom: 10px; font-size: 15px; }
+    .mp-info { background: rgba(126,200,255,0.08); padding:12px; border-radius:6px; margin-top:14px; font-size:14px; }
+    .tutorial-box {
+      background: rgba(255, 226, 122, 0.08);
+      border-left: 4px solid #ffe27a;
+      border-radius: 6px;
+      padding: 12px 16px;
+      margin-top: 16px;
+      text-align: left;
+    }
+    .tutorial-box h3 { color: #ffe27a; font-size: 15px; margin-bottom: 6px; font-weight: bold; }
+    .tutorial-box ul { list-style: none; padding: 0; margin: 0; }
+    .tutorial-box li { padding: 3px 0; font-size: 13px; color: #ccd; line-height: 1.5; }
+    .tutorial-box li::before { content: "•"; color: #ffe27a; margin-right: 8px; }
+    .mp-spinner {
+      display: inline-block; width: 36px; height: 36px;
+      border: 4px solid rgba(126,200,255,0.3); border-top-color: #7ec8ff;
+      border-radius: 50%; animation: mp-spin 0.8s linear infinite;
+      margin: 16px 0;
+    }
+    @keyframes mp-spin { to { transform: rotate(360deg); } }
+
+    #mp-place-banner {
+      position: fixed; top: 80px; left: 50%; transform: translateX(-50%);
+      background: linear-gradient(180deg, gold, #d4a017);
+      color: #000;
+      padding: 14px 36px;
+      border-radius: 12px;
+      font-size: 22px; font-weight: bold;
+      box-shadow: 0 0 30px rgba(255, 226, 122, 0.6);
+      z-index: 100;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game" width="1280" height="720"></canvas>
+
+    <div id="hud">
+      <div class="hud-left">
+        <div class="location-tag" id="hud-level">LEVEL 1: Glycolysis</div>
+        <div class="location-tag" id="hud-location">CYTOPLASM</div>
+      </div>
+      <div class="hud-right">
+        <div class="resource big" id="hud-timer-wrap"><span>⏱</span><span id="hud-timer">00:00</span></div>
+        <div class="resource big"><span class="icon atp"></span><span>ATP: <span id="hud-atp">0</span></span></div>
+        <div class="resource" style="cursor:pointer;" onclick="setMuted(!window.__getMuted())" title="Toggle audio (M)"><span id="hud-mute">🔊</span></div>
+      </div>
+    </div>
+
+    <div class="controls-hint">
+      HOLD / TAP <strong>SPACE</strong> to jump &nbsp;·&nbsp; CLICK canvas also jumps &nbsp;·&nbsp; <strong>P</strong>: Bio-Codex &nbsp;·&nbsp; <strong>1-4</strong>: quiz answers
+    </div>
+
+    <div id="overlay">
+      <div id="overlay-content"></div>
+    </div>
+
+    <audio id="bg-music" loop preload="auto"></audio>
+  </div>
+
+  <!-- Multiplayer overlay shown until host starts -->
+  <div id="mp-wait-overlay">
+    <div class="mp-wait-card">
+      <h1 id="mp-wait-title">⏳ Connecting...</h1>
+      <p id="mp-wait-sub">Joining the game session.</p>
+      <div class="mp-spinner"></div>
+      <div class="mp-info">
+        Player: <strong id="mp-name">—</strong><br>
+        Game code: <strong id="mp-code">—</strong>
+      </div>
+      <div class="tutorial-box">
+        <h3>🧬 How to Play</h3>
+        <ul>
+          <li><strong>SPACE</strong> = jump (hold for higher)</li>
+          <li><strong>Die?</strong> → biology question pops up. Right = keep going. Wrong = restart level</li>
+          <li><strong>Level up:</strong> answer <strong>3 questions</strong> correctly between levels</li>
+          <li><strong>Win:</strong> first <strong>3 players</strong> to finish Level 4 take the podium 🥇🥈🥉</li>
+          <li>The instant the 3rd person finishes, the game ends for everyone</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Live banner overlay (shown when this player finishes or game ends) -->
+  <div id="mp-place-banner"></div>
+
+  <!-- Same game scripts as single-player — game itself is unchanged -->
+  <script src="questions.js?v=mp1"></script>
+  <script src="levels.js?v=mp1"></script>
+  <script src="game.js?v=mp1"></script>
+  <!-- Bridge: expose the game's script-scoped `state` and `LEVELS` to window for multiplayer.js.
+       Classic <script> tags share top-level const/let bindings, so we can read them here by bare name. -->
+  <script>
+    try { window.__gameState = state; } catch (e) {}
+    try { window.__gameLevels = LEVELS; } catch (e) {}
+  </script>
+  <!-- Multiplayer wrapper sits on top -->
+  <script src="multiplayer.js?v=mp1"></script>
+</body>
+</html>

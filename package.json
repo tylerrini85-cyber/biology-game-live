@@ -1,0 +1,17 @@
+{
+  "name": "biology-game-live",
+  "version": "1.0.0",
+  "description": "Live multiplayer wrapper for the Cellular Respiration biology game — Kahoot-style host + join sessions.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "private": true,
+  "license": "MIT"
+}

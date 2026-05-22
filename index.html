@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cellular Respiration: The Glucose Journey</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game" width="1280" height="720"></canvas>
+
+    <div id="hud">
+      <div class="hud-left">
+        <div class="location-tag" id="hud-level">LEVEL 1: Glycolysis</div>
+        <div class="location-tag" id="hud-location">CYTOPLASM</div>
+      </div>
+      <div class="hud-right">
+        <div class="resource big" id="hud-timer-wrap"><span>⏱</span><span id="hud-timer">00:00</span></div>
+        <div class="resource big"><span class="icon atp"></span><span>ATP: <span id="hud-atp">0</span></span></div>
+        <div class="resource" style="cursor:pointer;" onclick="setMuted(!window.__getMuted())" title="Toggle audio (M)"><span id="hud-mute">🔊</span></div>
+      </div>
+    </div>
+
+    <div class="controls-hint">
+      HOLD / TAP <strong>SPACE</strong> to jump &nbsp;·&nbsp; CLICK canvas also jumps &nbsp;·&nbsp; <strong>P</strong>: Bio-Codex &nbsp;·&nbsp; <strong>1-4</strong>: answer
+    </div>
+
+    <div id="overlay">
+      <div id="overlay-content"></div>
+    </div>
+
+    <!-- Background music: public-domain jazz/ragtime from Wikimedia Commons.
+         No <source> elements — JS picks the first URL that successfully loads. -->
+    <audio id="bg-music" loop preload="auto"></audio>
+  </div>
+
+  <script src="questions.js?v=jazzfix"></script>
+  <script src="levels.js?v=jazzfix"></script>
+  <script src="game.js?v=jazzfix"></script>
+</body>
+</html>
