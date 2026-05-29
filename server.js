@@ -35,8 +35,77 @@ const ROUTE_TO_FILE = {
   '/':         '/landing.html',
   '/host':     '/host.html',
   '/join':     '/join.html',
-  '/play':     '/play.html'
+  '/play':     '/play.html',
+  '/gif':      '/gif-maker.html'
 };
+
+// OpenAI's most recent image model. Override with OPENAI_IMAGE_MODEL if desired.
+const OPENAI_IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-1';
+
+// Reads the POST body as a string, capped so a bad client can't exhaust memory.
+function readBody(req, maxBytes = 1e6) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > maxBytes) { reject(new Error('Body too large')); req.destroy(); }
+    });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res, status, obj) {
+  res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' });
+  res.end(JSON.stringify(obj));
+}
+
+// POST /api/generate-gif  { prompt }  ->  { b64_json }
+// Proxies to OpenAI image generation so the API key stays on the server.
+async function handleGenerateGif(req, res) {
+  let prompt;
+  try {
+    const parsed = JSON.parse(await readBody(req));
+    prompt = String(parsed.prompt || '').trim().slice(0, 1000);
+  } catch (e) {
+    return sendJson(res, 400, { error: 'Invalid request body' });
+  }
+  if (!prompt) return sendJson(res, 400, { error: 'Please describe the GIF you want.' });
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return sendJson(res, 500, {
+      error: 'Server is missing OPENAI_API_KEY. Set your ChatGPT API key as an environment variable and restart.'
+    });
+  }
+
+  try {
+    const r = await fetch('https://api.openai.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: OPENAI_IMAGE_MODEL,
+        prompt,
+        n: 1,
+        size: '1024x1024'
+      })
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const message = (data && data.error && data.error.message) || `OpenAI request failed (HTTP ${r.status})`;
+      return sendJson(res, r.status, { error: message });
+    }
+    const item = data && data.data && data.data[0];
+    const b64 = item && (item.b64_json || null);
+    if (!b64) return sendJson(res, 502, { error: 'OpenAI returned no image data.' });
+    return sendJson(res, 200, { b64_json: b64 });
+  } catch (e) {
+    return sendJson(res, 502, { error: 'Could not reach OpenAI: ' + String(e.message || e) });
+  }
+}
 
 // ----- Sessions (in-memory) -----
 const sessions = new Map();
@@ -118,6 +187,13 @@ function checkGameEnd(session) {
 // ----- HTTP server (static + routes) -----
 const server = http.createServer((req, res) => {
   let urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+
+  // AI GIF maker: generate an image from a text prompt via OpenAI.
+  if (urlPath === '/api/generate-gif') {
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'Method not allowed' });
+    handleGenerateGif(req, res);
+    return;
+  }
 
   // Tiny JSON API: check if a game code is valid before joining.
   if (urlPath === '/api/check-code') {
