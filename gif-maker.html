@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI GIF Maker</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    html, body { overflow: auto; }
+    body {
+      display: flex; flex-direction: column; align-items: center;
+      min-height: 100vh; padding: 30px 18px 60px;
+    }
+    .gm-wrap { max-width: 640px; width: 100%; text-align: center; }
+    .gm-title {
+      font-size: 46px; font-weight: 900; line-height: 1.05;
+      background: linear-gradient(90deg, #ffe27a, #ff9a9a, #7ec8ff);
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+    .gm-sub { color: #aac; font-size: 16px; margin-bottom: 28px; }
+    .gm-form { display: flex; flex-direction: column; gap: 14px; }
+    .gm-input {
+      width: 100%; padding: 16px 18px; font-size: 17px;
+      border-radius: 12px; border: 2px solid #3a6fbf;
+      background: #0a1326; color: #fff; resize: vertical; min-height: 76px;
+      font-family: inherit;
+    }
+    .gm-input:focus { outline: none; border-color: #7ec8ff; box-shadow: 0 0 16px rgba(126,200,255,0.35); }
+    .gm-btn {
+      background: linear-gradient(180deg, #4a8fff, #2a5fcf);
+      border: 3px solid #6cb0ff; color: #fff;
+      padding: 16px 28px; font-size: 20px; font-weight: bold;
+      border-radius: 12px; cursor: pointer; transition: all 0.15s;
+      box-shadow: 0 0 20px rgba(74,143,255,0.4);
+    }
+    .gm-btn:hover:not(:disabled) { transform: scale(1.02); background: linear-gradient(180deg, #5a9fff, #3a6fdf); }
+    .gm-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+    .gm-status { margin-top: 22px; font-size: 16px; color: #cdd; min-height: 24px; }
+    .gm-status.error { color: #ff9a9a; }
+    .gm-spinner {
+      display: inline-block; width: 16px; height: 16px; margin-right: 8px;
+      border: 3px solid rgba(255,255,255,0.25); border-top-color: #7ec8ff;
+      border-radius: 50%; animation: gm-spin 0.8s linear infinite; vertical-align: -3px;
+    }
+    @keyframes gm-spin { to { transform: rotate(360deg); } }
+    .gm-result { margin-top: 26px; display: none; }
+    .gm-result.show { display: block; }
+    .gm-result img {
+      max-width: 100%; border-radius: 14px; border: 2px solid #3a6fbf;
+      box-shadow: 0 0 40px rgba(80,140,255,0.4); background: #0a0a1a;
+    }
+    .gm-actions { margin-top: 16px; display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .gm-hint { margin-top: 26px; font-size: 13px; color: #7a8aa8; line-height: 1.6; }
+    .gm-hint code { color: #ffe27a; }
+    .gm-back { display: block; margin-top: 28px; color: #7a8aa8; font-size: 13px; text-decoration: none; }
+    .gm-back:hover { color: #aac; }
+    canvas#work { display: none; }
+  </style>
+</head>
+<body>
+  <div class="gm-wrap">
+    <div class="gm-title">🎬 AI GIF Maker</div>
+    <div class="gm-sub">Type what you want — get a looping 2-second animated GIF, powered by OpenAI's latest image model.</div>
+
+    <form class="gm-form" id="gm-form">
+      <textarea class="gm-input" id="gm-prompt" placeholder="e.g. a glowing mitochondria floating in a cell, neon cartoon style" maxlength="1000"></textarea>
+      <button type="submit" class="gm-btn" id="gm-go">✨ Make my GIF</button>
+    </form>
+
+    <div class="gm-status" id="gm-status"></div>
+
+    <div class="gm-result" id="gm-result">
+      <img id="gm-img" alt="Your generated GIF">
+      <div class="gm-actions">
+        <a class="btn" id="gm-download" download="ai-gif.gif" style="margin-top:0;text-decoration:none;">⬇ Download GIF</a>
+        <button class="btn secondary" id="gm-again" style="margin-top:0;">↻ Make another</button>
+      </div>
+    </div>
+
+    <div class="gm-hint">
+      The 2-second loop plays forever. Set your ChatGPT API key on the server as
+      <code>OPENAI_API_KEY</code> for this to work.
+    </div>
+    <a class="gm-back" href="/">▸ Back to home</a>
+  </div>
+
+  <canvas id="work"></canvas>
+
+  <!-- gif.js: encodes the animated, looping GIF in the browser -->
+  <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+  <script src="gif-maker.js"></script>
+</body>
+</html>
