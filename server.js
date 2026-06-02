@@ -35,7 +35,11 @@ const ROUTE_TO_FILE = {
   '/':         '/landing.html',
   '/host':     '/host.html',
   '/join':     '/join.html',
-  '/play':     '/play.html'
+  '/play':     '/play.html',
+  // VibeCut Studio (served from the vibecut-web folder)
+  '/vibecut':      '/vibecut-web/studio.html',
+  '/vibecut/':     '/vibecut-web/studio.html',
+  '/vibecut/demo': '/vibecut-web/index.html'
 };
 
 // ----- Sessions (in-memory) -----
