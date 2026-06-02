@@ -86,6 +86,10 @@ class Captions:
     font: str = "Arial"
     uppercase: bool = False
     size: int = 0  # 0 = auto from style
+    outline: int = 0  # 0 = auto from style
+    shadow: int = 2
+    box: bool = False        # opaque background box
+    animation: str = "none"  # none | fade | pop
     events: list[CaptionEvent] = field(default_factory=list)
 
 
@@ -159,6 +163,10 @@ class EditModel:
                             font=cap_d.get("font", "Arial"),
                             uppercase=cap_d.get("uppercase", False),
                             size=cap_d.get("size", 0),
+                            outline=cap_d.get("outline", 0),
+                            shadow=cap_d.get("shadow", 2),
+                            box=cap_d.get("box", False),
+                            animation=cap_d.get("animation", "none"),
                             events=events)
         return cls(profile=prof, tracks=tracks, captions=captions,
                    titles=list(d.get("titles", [])), music=d.get("music"),

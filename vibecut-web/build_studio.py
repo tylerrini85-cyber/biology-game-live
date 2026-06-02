@@ -83,6 +83,9 @@ window.addEventListener('DOMContentLoaded', function(){
   ['#voicegain','#musicgain','#duckamt'].forEach(function(id){ if($(id)) $(id).addEventListener('input', audioMix); });
   ['#cb','#cc','#cs','#ct'].forEach(function(id){ if($(id)) $(id).addEventListener('input', colorAdjust); });
   if($('#lutfile')) $('#lutfile').addEventListener('change', loadLut);
+  if($('#capbox')) $('#capbox').addEventListener('change', capExtras);
+  if($('#capanim')) $('#capanim').addEventListener('change', capExtras);
+  if($('#ovadd')) $('#ovadd').addEventListener('click', addOverlay);
   doVibe(null);  // initial edit on the sample
 });
 
@@ -166,6 +169,8 @@ function render(){
       +'" onchange="editCap('+i+',this.value)">'
       +'<button class="ghost sm" title="end -" onclick="capNudge('+i+',\'end\',-0.1)">−</button>'
       +'<button class="ghost sm" title="end +" onclick="capNudge('+i+',\'end\',0.1)">+</button></div>'; }).join('') || '<span class="muted">no captions</span>';
+  if($('#ovlist')) $('#ovlist').innerHTML=(m.titles||[]).map(function(tt,i){
+    return '<span class="chip">'+esc(tt.text)+' ('+tt.kind+' @'+tt.start+'s) <a onclick="remOverlay('+i+')" style="cursor:pointer">✕</a></span>'; }).join('') || 'none';
   updUndo();
 }
 function escAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
@@ -184,6 +189,11 @@ function colorAdjust(){ if(!state.model) return;
   $('#vwrap').style.filter=previewFilter(state.model);
   $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); }
 function loadLut(e){ var f=e.target.files[0]; if(f && state.model){ state.model.lut=f.name; $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); } }
+function capExtras(){ if(!state.model) return; state.model.captions.box=$('#capbox').checked; state.model.captions.animation=$('#capanim').value; }
+function addOverlay(){ if(!state.model) return; var txt=$('#ovtext').value.trim(); if(!txt) return; pushUndo();
+  state.model.titles.push({text:txt, start:parseFloat($('#ovstart').value)||0, dur:2.5, kind:$('#ovpos').value});
+  $('#ovtext').value=''; render(); }
+function remOverlay(i){ pushUndo(); state.model.titles.splice(i,1); render(); }
 function audioMix(){
   if(!state.model) return;
   state.model.voice_gain=parseFloat($('#voicegain').value);
@@ -320,6 +330,8 @@ TEMPLATE = """<!doctype html>
       <label>Audio fade <select id="audiocurve"><option>constant-power</option><option>constant-gain</option><option>exponential</option></select></label>
       <label>Caption style <select id="capstyle"><option>minimal</option><option selected>bold-karaoke</option><option>hype</option><option>neon</option><option>clean</option><option>lower-third</option></select></label>
       <label><input type="checkbox" id="t_upper"> UPPERCASE</label>
+      <label><input type="checkbox" id="capbox"> Caption box</label>
+      <label>Cap anim <select id="capanim"><option>none</option><option>fade</option><option>pop</option></select></label>
       <label>Speed <select id="speed"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select></label>
     </div>
     <div class="toggles" style="margin-top:8px">
@@ -372,6 +384,15 @@ TEMPLATE = """<!doctype html>
 
   <div class="card"><div class="label">Captions &mdash; edit the words by hand</div>
     <div id="capeditor"></div></div>
+
+  <div class="card"><div class="label">Text / graphic overlays</div>
+    <div class="row">
+      <input type="text" id="ovtext" placeholder="overlay text" style="flex:2;min-width:160px">
+      <input type="number" id="ovstart" value="0" step="0.5" style="width:90px" title="start (s)">
+      <select id="ovpos"><option value="intro">top</option><option value="center">center</option><option value="lower-third">bottom</option></select>
+      <button id="ovadd" class="ghost sm">Add</button>
+    </div>
+    <div id="ovlist" class="muted" style="margin-top:8px"></div></div>
 
   <div class="card"><div class="label">Export</div>
     <div class="row" style="margin-bottom:10px">

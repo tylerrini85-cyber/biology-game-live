@@ -301,7 +301,7 @@
     function survivor(w) { return clips.some(function (c) { return c.src_in - EPS <= w.mid && w.mid <= c.src_out + EPS; }); }
     function push(op, info) { if (report) report.ops.push([op, info]); }
 
-    model.captions = { style: "minimal", highlight: "#FFE000", events: [], uppercase: false, font: "Arial" };
+    model.captions = { style: "minimal", highlight: "#FFE000", events: [], uppercase: false, font: "Arial", box: false, outline: 0, animation: "none" };
     model.zoomKeyframes = []; model.broll = []; model.colorLook = null; model.transition = null; model.transitionAudio = "constant-power";
 
     if (P.add_captions) {
@@ -313,7 +313,8 @@
       });
       flush();
       model.captions = { style: style, highlight: "#FFE000", events: events,
-                         uppercase: !!P.add_captions.uppercase, font: P.add_captions.font || "Arial" };
+                         uppercase: !!P.add_captions.uppercase, font: P.add_captions.font || "Arial",
+                         box: false, outline: 0, animation: "none" };
       push("add_captions", events.length + " events");
     }
     if (P.punch_in) {

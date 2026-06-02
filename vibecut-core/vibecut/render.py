@@ -78,7 +78,15 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920,
     bold = -1 if boldish else 0
     fontsize = captions.size if captions.size and captions.size > 0 else (96 if boldish else 64)
     font = captions.font or "Arial"
-    outline = 2 if captions.style == "clean" else 4
+    outline = captions.outline if captions.outline and captions.outline > 0 else (2 if captions.style == "clean" else 4)
+    shadow = captions.shadow
+    border_style = 3 if captions.box else 1
+    outline_col = "&H90000000&" if captions.box else "&H000000&"  # box uses outline colour as bg
+    anim = ""  # per-event animation prefix
+    if captions.animation == "fade":
+        anim = "{\\fad(150,150)}"
+    elif captions.animation == "pop":
+        anim = "{\\fad(80,60)}"
     margin_v = int(height * 0.18) if captions.position == "lower-mid" else 60
 
     lines = [
@@ -90,21 +98,24 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920,
         ("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
          "OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, "
          "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding"),
-        (f"Style: Vibe,{font},{fontsize},{primary},{highlight},&H000000&,"
-         f"&H80000000&,{bold},0,1,{outline},2,2,40,40,{margin_v},1"),
+        (f"Style: Vibe,{font},{fontsize},{primary},{highlight},{outline_col},"
+         f"&H80000000&,{bold},0,{border_style},{outline},{shadow},2,40,40,{margin_v},1"),
         (f"Style: Title,{font},{int(fontsize * 1.4)},{primary},{primary},&H000000&,"
          f"&H80000000&,-1,0,1,5,3,8,60,60,{int(height * 0.10)},1"),
+        (f"Style: Center,{font},{int(fontsize * 1.2)},{primary},{primary},&H000000&,"
+         f"&H80000000&,-1,0,1,5,3,5,60,60,0,1"),
         (f"Style: Lower,{font},{int(fontsize * 0.8)},{primary},{primary},&H000000&,"
          f"&HA0000000&,-1,0,1,3,2,1,80,80,{int(height * 0.12)},1"),
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
+    _TSTYLE = {"intro": "Title", "center": "Center", "lower-third": "Lower"}
     for tt in (titles or []):
         text = (tt.get("text") or "").upper() if captions.uppercase else (tt.get("text") or "")
         st, en = float(tt.get("start", 0.0)), float(tt.get("start", 0.0)) + float(tt.get("dur", 2.5))
-        style = "Title" if tt.get("kind", "intro") == "intro" else "Lower"
-        lines.append(f"Dialogue: 0,{_ts(st)},{_ts(en)},{style},,0,0,0,,{text}")
+        style = _TSTYLE.get(tt.get("kind", "intro"), "Title")
+        lines.append(f"Dialogue: 0,{_ts(st)},{_ts(en)},{style},,0,0,0,,{{\\fad(150,150)}}{text}")
     for ev in captions.events:
         # karaoke: \kNN gives each word a highlight duration in centiseconds
         chunks = []
@@ -113,7 +124,7 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920,
             word = cw.w.upper() if captions.uppercase else cw.w
             chunks.append(f"{{\\kf{k}}}{word} ")
         text = "".join(chunks).strip()
-        lines.append(f"Dialogue: 0,{_ts(ev.start)},{_ts(ev.end)},Vibe,,0,0,0,,{text}")
+        lines.append(f"Dialogue: 0,{_ts(ev.start)},{_ts(ev.end)},Vibe,,0,0,0,,{anim}{text}")
     return "\n".join(lines) + "\n"
 
 

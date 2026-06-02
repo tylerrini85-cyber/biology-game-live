@@ -278,6 +278,27 @@ class TestSpeedTitleAudio(unittest.TestCase):
         self.assertIn("afftdn", args[args.index("-filter_complex") + 1])
 
 
+class TestCaptionStylingDepth(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+
+    def test_box_outline_animation_in_ass(self):
+        model, _ = apply_plan(RulesProvider().plan("bold captions"), self.a)
+        model.captions.box = True
+        model.captions.outline = 6
+        model.captions.animation = "fade"
+        ass = build_ass(model.captions)
+        self.assertIn(",3,6,", ass)            # BorderStyle=3 (box), Outline=6
+        self.assertIn("\\fad(150,150)", ass)   # fade animation on caption events
+
+    def test_center_title_style(self):
+        model, _ = apply_plan(RulesProvider().plan("bold captions"), self.a)
+        model.titles.append({"text": "Middle", "start": 1.0, "dur": 2.0, "kind": "center"})
+        ass = build_ass(model.captions, titles=model.titles)
+        self.assertIn("Style: Center", ass)
+        self.assertIn(",Center,,", ass)
+
+
 class TestColorAdjust(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)
