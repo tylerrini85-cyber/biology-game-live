@@ -460,7 +460,7 @@ TEMPLATE = """<!doctype html>
     <pre id="ffmpeg"></pre>
   </div>
 
-  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation.</div>
+  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-3</b></div>
 </div>
 <script>__ENGINE__</script>
 <script>
