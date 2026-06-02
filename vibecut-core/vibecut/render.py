@@ -83,6 +83,8 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920,
          f"&H80000000&,{bold},0,1,{outline},2,2,40,40,{margin_v},1"),
         (f"Style: Title,{font},{int(fontsize * 1.4)},{primary},{primary},&H000000&,"
          f"&H80000000&,-1,0,1,5,3,8,60,60,{int(height * 0.10)},1"),
+        (f"Style: Lower,{font},{int(fontsize * 0.8)},{primary},{primary},&H000000&,"
+         f"&HA0000000&,-1,0,1,3,2,1,80,80,{int(height * 0.12)},1"),
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -90,7 +92,8 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920,
     for tt in (titles or []):
         text = (tt.get("text") or "").upper() if captions.uppercase else (tt.get("text") or "")
         st, en = float(tt.get("start", 0.0)), float(tt.get("start", 0.0)) + float(tt.get("dur", 2.5))
-        lines.append(f"Dialogue: 0,{_ts(st)},{_ts(en)},Title,,0,0,0,,{text}")
+        style = "Title" if tt.get("kind", "intro") == "intro" else "Lower"
+        lines.append(f"Dialogue: 0,{_ts(st)},{_ts(en)},{style},,0,0,0,,{text}")
     for ev in captions.events:
         # karaoke: \kNN gives each word a highlight duration in centiseconds
         chunks = []
@@ -145,7 +148,16 @@ def _build(model: EditModel, ass_path: str):
         parts.append(f"[0:a]atrim=start={c.src_in:.3f}:end={c.src_out:.3f},asetpts=PTS-STARTPTS[a{i}]")
     parts.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[vc][ac]")
 
+    # detect effects + b-roll first (the music input index depends on b-roll count)
     speed_f = next((f.params.get("factor", 1.0) for f in vt.filters if f.type == "speed"), 1.0)
+    reframe = any(f.type == "auto_reframe" for f in vt.filters)
+    zoom = _zoom_expr(vt)
+    broll_clips = next((t.clips for t in model.tracks if t.id == "V2"), [])
+    existing = [c for c in broll_clips if os.path.exists(_broll_url(c))]
+    skipped = len(broll_clips) - len(existing)
+    effects = reframe or zoom or existing
+
+    # voice chain
     afilters = []
     for f in at.filters:
         if f.type == "loudnorm":
@@ -156,14 +168,23 @@ def _build(model: EditModel, ass_path: str):
             afilters.append("afftdn=nf=-25,highpass=f=90,lowpass=f=12000")
     if abs(float(speed_f) - 1.0) > 1e-3:
         afilters += _atempo_chain(float(speed_f))
-    parts.append("[ac]" + ",".join(afilters or ["anull"]) + "[aout]")
+    parts.append("[ac]" + ",".join(afilters or ["anull"]) + "[voicepre]")
 
-    reframe = any(f.type == "auto_reframe" for f in vt.filters)
-    zoom = _zoom_expr(vt)
-    broll_clips = next((t.clips for t in model.tracks if t.id == "V2"), [])
-    existing = [c for c in broll_clips if os.path.exists(_broll_url(c))]
-    skipped = len(broll_clips) - len(existing)
-    effects = reframe or zoom or existing
+    # background music (+ optional sidechain ducking under the voice)
+    music_path = None
+    mus = getattr(model, "music", None)
+    if mus and os.path.exists(mus.get("url", "")):
+        midx = 1 + len(existing)
+        parts.append(f"[{midx}:a]volume={float(mus.get('gain', 0.25)):.3f}[mv]")
+        if mus.get("duck", True):
+            parts.append("[voicepre]asplit=2[va][vb]")
+            parts.append("[mv][vb]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[mvd]")
+            parts.append("[va][mvd]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]")
+        else:
+            parts.append("[voicepre][mv]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]")
+        music_path = mus["url"]
+    else:
+        parts.append("[voicepre]anull[aout]")
 
     vlabel = "vc"
     if reframe:  # center-crop to target aspect, normalize to WxH
@@ -215,7 +236,7 @@ def _build(model: EditModel, ass_path: str):
         parts.append(f"[{vlabel}]setpts=PTS/{float(speed_f):.4f}[vout]")
     else:
         parts.append(f"[{vlabel}]null[vout]")
-    return ";".join(parts), broll_paths, skipped
+    return ";".join(parts), broll_paths, music_path, skipped
 
 
 def _atempo_chain(factor: float) -> list[str]:
@@ -234,10 +255,12 @@ def build_ffmpeg_args(model: EditModel, src_url: str, out_path: str,
                       ass_path: str = "captions.ass", encoder: str = "mac") -> list[str]:
     """The export command as an argv list (safe for subprocess)."""
     enc = HW_ENCODERS.get(encoder, HW_ENCODERS["mac"])
-    fc, broll_paths, _ = _build(model, ass_path)
+    fc, broll_paths, music_path, _ = _build(model, ass_path)
     args = ["ffmpeg", "-y", "-i", src_url]
     for p in broll_paths:
         args += ["-i", p]
+    if music_path:
+        args += ["-i", music_path]
     args += ["-filter_complex", fc, "-map", "[vout]", "-map", "[aout]",
              "-c:v", enc, "-b:v", "12M", "-c:a", "aac", "-b:a", "192k", out_path]
     return args
@@ -249,7 +272,7 @@ def build_ffmpeg_command(model: EditModel, src_url: str, out_path: str,
     punch-in zoom, b-roll overlays, captions, and audio. Hardware encoders only."""
     cmd = " ".join(shlex.quote(a) for a in
                    build_ffmpeg_args(model, src_url, out_path, ass_path, encoder))
-    _, _, skipped = _build(model, ass_path)
+    _, _, _, skipped = _build(model, ass_path)
     notes = []
     if skipped:
         notes.append(f"# note: {skipped} suggested b-roll clip(s) skipped (file not found on disk)")

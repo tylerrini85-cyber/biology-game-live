@@ -159,7 +159,17 @@ def speed(p: dict, model: EditModel) -> None:
 def add_title(p: dict, model: EditModel) -> None:
     text = (p.get("text") or "").strip()
     if text:
-        model.titles.append({"text": text, "start": 0.0, "dur": p.get("duration", 2.5)})
+        kind = p.get("kind", "intro")
+        start = 0.0 if kind == "intro" else 1.0
+        model.titles.append({"text": text, "start": start, "dur": p.get("duration", 2.5), "kind": kind})
+
+
+def add_music(p: dict, model: EditModel) -> None:
+    url = (p.get("url") or "").strip()
+    if url:
+        model.music = {"url": url, "gain": p.get("gain", 0.25), "duck": bool(p.get("duck", True))}
+    else:
+        model.notes.append("add_music: no music file given; skipped.")
 
 
 def punch_in(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel,
@@ -349,10 +359,15 @@ def apply_plan(plan: EditPlan, a: AssetAnalysis,
     if "speed" in params:
         speed(params["speed"], model)
         report["ops"].append({"speed": params["speed"]["factor"]})
-    if "add_title" in params:
-        add_title(params["add_title"], model)
-        if model.titles:
-            report["ops"].append({"add_title": model.titles[-1]["text"]})
+    for o in plan.ops:  # support multiple titles (intro + lower-third)
+        if o.op == "add_title":
+            add_title(o.params, model)
+    if model.titles:
+        report["ops"].append({"add_title": [tt["text"] for tt in model.titles]})
+    if "add_music" in params:
+        add_music(params["add_music"], model)
+        if model.music:
+            report["ops"].append({"add_music": {"duck": model.music["duck"]}})
     if "normalize_loudness" in params:
         normalize_loudness(params["normalize_loudness"], model)
         report["ops"].append({"normalize_loudness": params["normalize_loudness"]["i"]})

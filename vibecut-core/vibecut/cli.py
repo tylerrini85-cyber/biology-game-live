@@ -31,12 +31,17 @@ def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
         from_project: str | None = None, save_project: str | None = None,
         lock_clips: list[int] | None = None, html_path: str | None = None,
         media_library_path: str | None = None, render_path: str | None = None,
-        title: str | None = None) -> dict:
+        title: str | None = None, lower_third: str | None = None,
+        music: str | None = None) -> dict:
     analysis = AssetAnalysis.load(analysis_path)
     provider = make_provider(use_llm=use_llm, model=model) if use_llm else make_provider()
     plan = provider.plan(prompt, toggles)
     if title:
-        plan.ops.append(Op("add_title", {"text": title, "duration": 2.5}))
+        plan.ops.append(Op("add_title", {"text": title, "duration": 2.5, "kind": "intro"}))
+    if lower_third:
+        plan.ops.append(Op("add_title", {"text": lower_third, "duration": 3.0, "kind": "lower-third"}))
+    if music:
+        plan.ops.append(Op("add_music", {"url": music}))
 
     library = None
     if media_library_path:
@@ -95,6 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--media-library", metavar="PATH", help="JSON of your own clips for b-roll suggestions")
     ap.add_argument("--render", metavar="OUT.mp4", help="actually run FFmpeg to export the MP4 (needs ffmpeg + real source)")
     ap.add_argument("--title", metavar="TEXT", help="add an intro title card")
+    ap.add_argument("--lower-third", metavar="TEXT", help="add a lower-third title")
+    ap.add_argument("--music", metavar="PATH", help="background music file (auto-ducked under speech)")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON only")
     args = ap.parse_args(argv)
 
@@ -108,7 +115,8 @@ def main(argv: list[str] | None = None) -> int:
               toggles, args.llm, args.model, from_project=args.revibe,
               save_project=args.save_project, lock_clips=args.lock_clip,
               html_path=args.html, media_library_path=args.media_library,
-              render_path=args.render, title=args.title)
+              render_path=args.render, title=args.title,
+              lower_third=args.lower_third, music=args.music)
 
     if args.json:
         out = {k: v for k, v in res.items() if k != "edit_model"}

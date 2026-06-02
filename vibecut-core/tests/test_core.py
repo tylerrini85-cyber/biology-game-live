@@ -227,10 +227,30 @@ class TestSpeedTitleAudio(unittest.TestCase):
 
     def test_title_renders_in_ass(self):
         model, _ = apply_plan(RulesProvider().plan("add captions"), self.a)
-        model.titles.append({"text": "My Channel", "start": 0.0, "dur": 2.5})
+        model.titles.append({"text": "My Channel", "start": 0.0, "dur": 2.5, "kind": "intro"})
         ass = build_ass(model.captions, titles=model.titles)
         self.assertIn("Style: Title", ass)
         self.assertIn("My Channel", ass)
+
+    def test_lower_third_uses_lower_style(self):
+        model, _ = apply_plan(RulesProvider().plan("add captions"), self.a)
+        model.titles.append({"text": "Jane Doe", "start": 1.0, "dur": 3.0, "kind": "lower-third"})
+        ass = build_ass(model.captions, titles=model.titles)
+        self.assertIn("Style: Lower", ass)
+        self.assertIn(",Lower,,", ass)  # event uses the Lower style
+
+    def test_music_ducking_baked_into_export(self):
+        from vibecut.editmodel import EditModel
+        from vibecut.render import build_ffmpeg_args
+        with tempfile.TemporaryDirectory() as d:
+            mp = os.path.join(d, "song.mp3"); open(mp, "wb").write(b"\x00")
+            model, _ = apply_plan(RulesProvider().plan("punchy bold captions"), self.a)
+            model.music = {"url": mp, "gain": 0.25, "duck": True}
+            args = build_ffmpeg_args(model, self.a.source_url, "out.mp4")
+            self.assertIn(mp, args)  # music added as an input
+            fc = args[args.index("-filter_complex") + 1]
+            self.assertIn("sidechaincompress", fc)  # ducked under voice
+            self.assertIn("amix", fc)
 
     def test_enhance_uses_afftdn(self):
         from vibecut.render import build_ffmpeg_args

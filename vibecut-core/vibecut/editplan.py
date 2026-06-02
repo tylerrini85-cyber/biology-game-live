@@ -46,8 +46,13 @@ OP_SPEC: dict[str, dict] = {
     "color_look":        {"look": ("warm", None, None), "amount": (0.8, 0.0, 1.0)},
     "transitions":       {"style": ("fade", None, None), "duration": (0.4, 0.1, 2.0)},
     "speed":             {"factor": (1.0, 0.25, 4.0)},
-    "add_title":         {"text": ("", None, None), "duration": (2.5, 0.5, 10.0)},
+    "add_title":         {"text": ("", None, None), "duration": (2.5, 0.5, 10.0),
+                          "kind": ("intro", None, None)},
+    "add_music":         {"url": ("", None, None), "gain": (0.25, 0.0, 1.0),
+                          "duck": (True, None, None)},
 }
+
+TITLE_KINDS = ["intro", "lower-third"]
 
 DENSITY = ["low", "medium", "high"]
 
@@ -96,6 +101,8 @@ def _clamp(op: str, params: dict) -> dict:
         out["look"] = "warm"
     if op == "transitions" and out["style"] not in TRANSITIONS:
         out["style"] = "fade"
+    if op == "add_title" and out["kind"] not in TITLE_KINDS:
+        out["kind"] = "intro"
     return out
 
 
