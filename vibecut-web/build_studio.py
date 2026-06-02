@@ -37,6 +37,7 @@ CSS = """
   #broll{position:absolute;inset:0;background:#101418 center/cover no-repeat;display:none;align-items:center;justify-content:center;color:var(--accent);font-weight:700}
   #caps{position:absolute;left:0;right:0;bottom:9%;text-align:center;padding:0 8%;pointer-events:none}
   #caps span{display:inline-block;margin:0 .12em;text-shadow:0 2px 6px #000,0 0 2px #000}
+  #title{position:absolute;left:0;right:0;top:10%;display:none;align-items:center;justify-content:center;text-align:center;padding:0 8%;font-weight:800;color:#fff;font-size:5vw;text-shadow:0 3px 10px #000;pointer-events:none}
   .pv-controls{display:flex;gap:10px;align-items:center;margin-top:10px}
   .seg{position:absolute;top:0;height:100%}.seg.kept{background:var(--kept)}.seg.locked{background:var(--lock)}
   .timeline{position:relative;height:30px;background:var(--cut);border-radius:6px;overflow:hidden;margin-top:6px}
@@ -78,6 +79,7 @@ function toggles(){ var t={}; OPTS.forEach(function(o){ t[o[0]]=$('#t_'+o[0]).ch
   if($('#t_fade')) t.transition=$('#t_fade').checked;
   if($('#capstyle')) t.capStyle=$('#capstyle').value;
   if($('#t_upper')) t.upper=$('#t_upper').checked;
+  if($('#speed')) t.speed=$('#speed').value;
   return t; }
 
 function loadVideo(e){
@@ -100,6 +102,8 @@ function doVibe(prev){
   state.plan = VibeCut.planFromText($('#prompt').value, toggles());
   var r = VibeCut.edit(state.analysis, state.plan, LIB, prev);
   state.model=r.model; state.report=r.report;
+  var tt=$('#titletext')?$('#titletext').value.trim():'';
+  if(tt) state.model.titles=[{text:tt,start:0,dur:2.5}];
   applyAspect(); render();
 }
 function applyAspect(){
@@ -150,11 +154,11 @@ function startPlay(){
   var m=state.model; if(!m.clips.length) return;
   playing=true; segIdx=0; $('#play').textContent='⏸ Pause';
   var v=$('#videoEl');
-  if(state.hasVideo){ v.currentTime=m.clips[0].src_in; v.play(); }
+  if(state.hasVideo){ v.playbackRate=m.speed||1; v.currentTime=m.clips[0].src_in; v.play(); }
   else { vt0=performance.now(); vstart=0; }   // virtual clock (no video)
   loop();
 }
-function stopPlay(){ playing=false; $('#play').textContent='▶ Play edit'; var v=$('#videoEl'); if(v) v.pause(); if(raf) cancelAnimationFrame(raf); $('#vwrap').style.transform='scale(1)'; $('#caps').innerHTML=''; $('#broll').style.display='none'; $('#playhead').style.left='0'; }
+function stopPlay(){ playing=false; $('#play').textContent='▶ Play edit'; var v=$('#videoEl'); if(v) v.pause(); if(raf) cancelAnimationFrame(raf); $('#vwrap').style.transform='scale(1)'; $('#caps').innerHTML=''; $('#broll').style.display='none'; $('#title').style.display='none'; $('#playhead').style.left='0'; }
 function loop(){
   if(!playing) return;
   var m=state.model, clips=m.clips, c=clips[segIdx], v=$('#videoEl'), tl;
@@ -162,7 +166,7 @@ function loop(){
     if(v.currentTime>=c.src_out-0.03){ segIdx++; if(segIdx>=clips.length){ stopPlay(); return; } v.currentTime=clips[segIdx].src_in; c=clips[segIdx]; }
     tl=c.timeline_start+Math.max(0, v.currentTime-c.src_in);
   } else {
-    tl=(performance.now()-vt0)/1000; if(tl>=m.clips[clips.length-1].timeline_start+(clips[clips.length-1].src_out-clips[clips.length-1].src_in)){ stopPlay(); return; }
+    tl=((performance.now()-vt0)/1000)*(m.speed||1); if(tl>=m.clips[clips.length-1].timeline_start+(clips[clips.length-1].src_out-clips[clips.length-1].src_in)){ stopPlay(); return; }
   }
   overlay(tl); raf=requestAnimationFrame(loop);
 }
@@ -187,6 +191,9 @@ function overlay(tl){
   var b=m.broll.find(function(x){return tl>=x.timeline_start && tl<=x.timeline_start+x.dur;});
   var bd=$('#broll');
   if(b){ bd.style.display='flex'; bd.textContent='B-ROLL: '+b.asset_id; } else bd.style.display='none';
+  // intro title
+  var ttl=m.titles && m.titles[0]; var td=$('#title');
+  if(ttl && tl<=ttl.dur){ td.style.display='flex'; td.textContent=m.captions.uppercase?ttl.text.toUpperCase():ttl.text; } else td.style.display='none';
 }
 
 /* ---- export ---- */
@@ -224,7 +231,10 @@ TEMPLATE = """<!doctype html>
       <label><input type="checkbox" id="t_fade"> Fade in/out</label>
       <label>Caption style <select id="capstyle"><option>minimal</option><option selected>bold-karaoke</option><option>hype</option><option>neon</option><option>clean</option><option>lower-third</option></select></label>
       <label><input type="checkbox" id="t_upper"> UPPERCASE</label>
+      <label>Speed <select id="speed"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select></label>
     </div>
+    <div style="margin-top:10px"><div class="label">Intro title (optional)</div>
+      <input type="text" id="titletext" placeholder="e.g. My Channel"></div>
     <div class="row" style="margin-top:14px">
       <button id="vibe">Vibe it &#9654;</button>
       <button id="revibe" class="ghost">Re-vibe (keeps 🔒 locked)</button>
@@ -235,7 +245,7 @@ TEMPLATE = """<!doctype html>
     <div class="label">Preview</div>
     <div class="preview" id="preview">
       <div id="vwrap"><video id="videoEl" playsinline></video><div id="placeholder">Load a video above to preview your edit.<br>(Without one, Play shows the captions/zoom timing on this placeholder.)</div></div>
-      <div id="broll"></div><div id="caps"></div>
+      <div id="broll"></div><div id="title"></div><div id="caps"></div>
     </div>
     <div class="pv-controls"><button id="play">&#9654; Play edit</button>
       <span class="muted">plays only the kept parts, with live captions + punch-in zoom</span></div>
