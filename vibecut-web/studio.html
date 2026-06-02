@@ -681,7 +681,7 @@ var OPTS = [["captions","Captions"],["zooms","Auto-zoom"],["broll","B-roll"],["r
 var $ = function(s){ return document.querySelector(s); };
 function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
 
-window.addEventListener('DOMContentLoaded', function(){
+function boot(){
   var box=$('#toggles');
   OPTS.forEach(function(o){ var on=(o[0]==='captions'||o[0]==='zooms');
     box.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="t_'+o[0]+'"'+(on?' checked':'')+'> '+o[1]+'</label>'); });
@@ -706,7 +706,11 @@ window.addEventListener('DOMContentLoaded', function(){
   if($('#capanim')) $('#capanim').addEventListener('change', capExtras);
   if($('#ovadd')) $('#ovadd').addEventListener('click', addOverlay);
   doVibe(null);  // initial edit on the sample
-});
+}
+// run boot now if the DOM is already parsed (scripts are at end of body),
+// otherwise wait for DOMContentLoaded -- bulletproof either way
+if (document.readyState !== 'loading') boot();
+else window.addEventListener('DOMContentLoaded', boot);
 
 function toggles(){ var t={}; OPTS.forEach(function(o){ t[o[0]]=$('#t_'+o[0]).checked; });
   if($('#look')) t.look=$('#look').value;

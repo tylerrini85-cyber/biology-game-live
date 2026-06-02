@@ -105,7 +105,7 @@ UI = """
 
   function setExample(s){ qs('#prompt').value = s; go(); }
 
-  window.addEventListener('DOMContentLoaded', function () {
+  function boot() {
     var sel = qs('#analysis');
     Object.keys(A).forEach(function (k) {
       var o = document.createElement('option'); o.value = k; o.textContent = A[k].label || k; sel.appendChild(o);
@@ -119,7 +119,9 @@ UI = """
     qs('#vibe').addEventListener('click', go);
     qs('#prompt').addEventListener('keydown', function(e){ if(e.key==='Enter') go(); });
     go();
-  });
+  }
+  if (document.readyState !== 'loading') boot();
+  else window.addEventListener('DOMContentLoaded', boot);
 """
 
 TEMPLATE = """<!doctype html>
