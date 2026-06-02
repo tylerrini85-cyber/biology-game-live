@@ -263,7 +263,11 @@ function startPlay(){
   else { vt0=performance.now(); vstart=0; }   // virtual clock (no video)
   loop();
 }
-function stopPlay(){ playing=false; $('#play').textContent='▶ Play edit'; var v=$('#videoEl'); if(v) v.pause(); if(raf) cancelAnimationFrame(raf); $('#vwrap').style.transform='scale(1)'; $('#caps').innerHTML=''; $('#broll').style.display='none'; $('#title').style.display='none'; $('#vwrap').style.opacity=1; $('#playhead').style.left='0'; }
+function stopPlay(){ playing=false; var pb=$('#play'); if(pb) pb.textContent='▶ Play edit';
+  var v=$('#videoEl'); if(v && v.pause) v.pause(); if(raf) cancelAnimationFrame(raf);
+  var w=$('#vwrap'); if(w){ w.style.transform='scale(1)'; w.style.opacity=1; }
+  var c=$('#caps'); if(c) c.innerHTML=''; var b=$('#broll'); if(b) b.style.display='none';
+  var t=$('#title'); if(t) t.style.display='none'; var ph=$('#playhead'); if(ph) ph.style.left='0'; }
 function loop(){
   if(!playing) return;
   var m=state.model, clips=m.clips, c=clips[segIdx], v=$('#videoEl'), tl;
@@ -280,9 +284,9 @@ function overlay(tl){
   // playhead position over source timeline: find clip then source time
   var c=m.clips[Math.min(segIdx,m.clips.length-1)];
   var srcT=c?c.src_in+(tl-c.timeline_start):0;
-  $('#playhead').style.left=(100*srcT/state.analysis.duration)+'%';
+  var ph=$('#playhead'); if(ph) ph.style.left=(100*srcT/state.analysis.duration)+'%';
   // zoom
-  $('#vwrap').style.transform='scale('+VibeCut.zoomScaleAt(m,tl).toFixed(3)+')';
+  var w=$('#vwrap'); if(w) w.style.transform='scale('+VibeCut.zoomScaleAt(m,tl).toFixed(3)+')';
   // captions
   var ev=m.captions.events.find(function(e){return tl>=e.start-0.05 && tl<=e.end+0.05;});
   if(ev){ var weight=(m.captions.style==='bold-karaoke'||m.captions.style==='hype')?800:600;
