@@ -310,6 +310,20 @@ class TestIngest(unittest.TestCase):
         self.assertTrue(model.captions.events)
 
 
+class TestReport(unittest.TestCase):
+    def test_html_report_contains_key_sections(self):
+        from vibecut.report import render_html
+        a = AssetAnalysis.load(SAMPLE)
+        model, rep = apply_plan(RulesProvider().plan("punchy bold captions under 45s for tiktok"), a)
+        h = render_html("punchy bold captions under 45s for tiktok", model, rep, a.duration, "ffmpeg ...")
+        self.assertIn("<!doctype html>", h)
+        self.assertIn("VibeCut", h)
+        self.assertIn("class=\"timeline\"", h)
+        self.assertIn("class=\"seg kept\"", h)      # a kept segment is drawn
+        self.assertIn("Edit plan", h)
+        self.assertIn("Captions preview", h)
+
+
 class TestPersistence(unittest.TestCase):
     def test_roundtrip(self):
         a = AssetAnalysis.load(SAMPLE)
