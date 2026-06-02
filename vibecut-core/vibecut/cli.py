@@ -14,7 +14,7 @@ import json
 import os
 
 from .analysis import AssetAnalysis
-from .editmodel import EditModel
+from .editmodel import EditModel, Effect, Profile
 from .editplan import Op, to_plain
 from .engine import apply_plan
 from .render import build_ass, build_ffmpeg_command, render_to_file
@@ -32,7 +32,8 @@ def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
         lock_clips: list[int] | None = None, html_path: str | None = None,
         media_library_path: str | None = None, render_path: str | None = None,
         title: str | None = None, lower_third: str | None = None,
-        music: str | None = None, voice_gain: float | None = None) -> dict:
+        music: str | None = None, voice_gain: float | None = None,
+        reframe_track: str | None = None) -> dict:
     analysis = AssetAnalysis.load(analysis_path)
     provider = make_provider(use_llm=use_llm, model=model) if use_llm else make_provider()
     plan = provider.plan(prompt, toggles)
@@ -53,6 +54,16 @@ def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
                                     media_library=library)
     if voice_gain is not None:
         edit_model.voice_gain = voice_gain
+    if reframe_track:
+        with open(reframe_track, "r", encoding="utf-8") as fh:
+            rt = json.load(fh)
+        edit_model.reframe_crop = rt.get("ffmpeg_crop", "")
+        asp = rt.get("aspect", "9:16")
+        dims = {"9:16": (1080, 1920), "1:1": (1080, 1080), "4:5": (1080, 1350),
+                "16:9": (1920, 1080)}.get(asp, (1080, 1920))
+        edit_model.profile = Profile(width=dims[0], height=dims[1], fps=edit_model.profile.fps)
+        if not any(f.type == "auto_reframe" for f in edit_model.video_track().filters):
+            edit_model.video_track().filters.append(Effect(type="auto_reframe", params={"target_aspect": asp}))
 
     # optionally lock clips by index (so a later --revibe protects them)
     for idx in (lock_clips or []):
@@ -105,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lower-third", metavar="TEXT", help="add a lower-third title")
     ap.add_argument("--music", metavar="PATH", help="background music file (auto-ducked under speech)")
     ap.add_argument("--voice-gain", type=float, metavar="X", help="voice volume multiplier (1.0 = unchanged)")
+    ap.add_argument("--reframe-track", metavar="JSON", help="subject-tracking crop from the reframe sidecar")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON only")
     args = ap.parse_args(argv)
 
@@ -119,7 +131,8 @@ def main(argv: list[str] | None = None) -> int:
               save_project=args.save_project, lock_clips=args.lock_clip,
               html_path=args.html, media_library_path=args.media_library,
               render_path=args.render, title=args.title,
-              lower_third=args.lower_third, music=args.music, voice_gain=args.voice_gain)
+              lower_third=args.lower_third, music=args.music, voice_gain=args.voice_gain,
+              reframe_track=args.reframe_track)
 
     if args.json:
         out = {k: v for k, v in res.items() if k != "edit_model"}

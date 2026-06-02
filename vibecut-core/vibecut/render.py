@@ -188,9 +188,13 @@ def _build(model: EditModel, ass_path: str):
     overlap = (style in XFADE_MAP) and n > 1
     D = float(tr.params.get("overlap", tr.params.get("duration", 0.4))) if overlap else 0.0
 
+    # subject-tracking crop (from the reframe sidecar) overrides static center-crop
+    track_crop = getattr(model, "reframe_crop", "") or ""
+
     # ---- video assembly: xfade chain (overlap transitions) or plain concat ----
     if overlap:
-        crop = (f"crop='min(iw,ih*{W}/{H})':'min(ih,iw*{H}/{W})'," if reframe else "")
+        crop = ((track_crop + ",") if (reframe and track_crop) else
+                (f"crop='min(iw,ih*{W}/{H})':'min(ih,iw*{H}/{W})'," if reframe else ""))
         for i in range(n):
             parts.append(f"[v{i}]{crop}scale={W}:{H},setsar=1,fps=30,format=yuv420p[vn{i}]")
         prev = "vn0"
@@ -255,9 +259,9 @@ def _build(model: EditModel, ass_path: str):
     else:
         parts.append("[voicepre]anull[aout]")
 
-    if not overlap and reframe:  # center-crop to target aspect, normalize to WxH
-        parts.append(f"[vc]crop='min(iw,ih*{W}/{H})':'min(ih,iw*{H}/{W})',"
-                     f"scale={W}:{H},setsar=1[vr]")
+    if not overlap and reframe:  # crop to target aspect (subject-tracked if available), normalize to WxH
+        crop = track_crop if track_crop else f"crop='min(iw,ih*{W}/{H})':'min(ih,iw*{H}/{W})'"
+        parts.append(f"[vc]{crop},scale={W}:{H},setsar=1[vr]")
         vlabel = "vr"
     elif not overlap and effects:  # normalize resolution so zoom/overlays line up
         parts.append(f"[vc]scale={W}:{H},setsar=1[vr]")

@@ -300,6 +300,9 @@ class TestCaptionStylingDepth(unittest.TestCase):
 
 
 class TestSidecars(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+
     def test_reframe_pure_helpers(self):
         from vibecut.sidecars import reframe
         track = [(0.0, 0.2, 0.5), (0.5, 0.8, 0.5), (1.0, 0.5, 0.5)]
@@ -311,6 +314,18 @@ class TestSidecars(unittest.TestCase):
         expr = reframe.ffmpeg_crop_expr(path, 1920, 1080)
         self.assertIn("crop=", expr)
         self.assertIn("x='", expr)
+
+    def test_reframe_crop_used_in_render(self):
+        from vibecut.editmodel import Effect
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("vertical for tiktok, captions"), self.a)
+        model.reframe_crop = "crop=1080:1920:x='if(lt(t,1.0),100,200)':y='0'"
+        if not any(f.type == "auto_reframe" for f in model.video_track().filters):
+            model.video_track().filters.append(Effect(type="auto_reframe", params={"target_aspect": "9:16"}))
+        fc = build_ffmpeg_args(model, self.a.source_url, "o.mp4")[
+            build_ffmpeg_args(model, self.a.source_url, "o.mp4").index("-filter_complex") + 1]
+        self.assertIn("crop=1080:1920:x='if(lt(t,1.0)", fc)  # dynamic subject-tracking crop
+        self.assertNotIn("min(iw,ih*", fc)                    # static center-crop replaced
 
     def test_broll_top_k_cosine(self):
         from vibecut.sidecars.broll import top_k_cosine

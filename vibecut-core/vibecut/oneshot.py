@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -64,6 +65,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--language", help="force transcription language (e.g. en, es, fr); default auto-detect")
     ap.add_argument("--encoder", default="mac", choices=["mac", "nvidia", "intel", "amd"])
     ap.add_argument("--media-library", help="JSON of your own clips for b-roll")
+    ap.add_argument("--broll-dir", help="folder of your clips/images for b-roll (filenames -> tags)")
+    ap.add_argument("--reframe", metavar="ASPECT", help="subject-tracking reframe to ASPECT (e.g. 9:16)")
     ap.add_argument("--no-zooms", action="store_true")
     ap.add_argument("--keep-files", action="store_true", help="keep the intermediate wav/analysis")
     args = ap.parse_args(argv)
@@ -97,11 +100,31 @@ def main(argv: list[str] | None = None) -> int:
                    "words": [{"text": w.text, "start": w.start, "dur": w.dur,
                               "emphasis": w.emphasis} for w in analysis.words]}, fh)
 
+    # optional: subject-tracking reframe + b-roll from a folder
+    reframe_track = None
+    if args.reframe:
+        print(f"  [3b] subject-tracking reframe -> {args.reframe}")
+        from .sidecars import reframe as _rf
+        reframe_track = os.path.join(workdir, "reframe.json")
+        with open(reframe_track, "w", encoding="utf-8") as fh:
+            json.dump(_rf.analyze(args.video, args.reframe), fh)
+    media_library_path = args.media_library
+    if args.broll_dir:
+        lib = []
+        for fn in sorted(os.listdir(args.broll_dir)):
+            if fn.lower().endswith((".mp4", ".mov", ".jpg", ".jpeg", ".png", ".webp")):
+                tags = [t for t in re.split(r"[^a-z0-9]+", os.path.splitext(fn)[0].lower()) if t]
+                lib.append({"id": fn, "url": os.path.join(args.broll_dir, fn), "duration": 2.5, "tags": tags})
+        media_library_path = os.path.join(workdir, "broll.json")
+        with open(media_library_path, "w", encoding="utf-8") as fh:
+            json.dump(lib, fh)
+
     print(f"  [4/4] vibe-editing + rendering -> {args.out}")
     toggles = {"zooms": False} if args.no_zooms else {}
     res = cli.run(args.prompt, analysis_path, args.out, ass_path, args.encoder,
                   toggles, False, "qwen2.5:7b",
-                  media_library_path=args.media_library, render_path=args.out)
+                  media_library_path=media_library_path, render_path=args.out,
+                  reframe_track=reframe_track)
 
     ok, msg = res["render_result"]
     if not args.keep_files:

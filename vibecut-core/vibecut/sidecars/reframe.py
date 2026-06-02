@@ -104,6 +104,19 @@ def ffmpeg_crop_expr(path: list, src_w: int, src_h: int) -> str:
     return f"crop={cw}:{ch}:x='{expr(1)}':y='{expr(2)}'"
 
 
+def analyze(video_path: str, aspect: str = "9:16") -> dict:
+    """Track the subject, smooth, and return the reframe dict (path + ffmpeg
+    crop expression), reading source dimensions from the video (needs OpenCV)."""
+    import cv2
+    track = ema_smooth(track_subject(video_path))
+    cap = cv2.VideoCapture(video_path)
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or 1920
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or 1080
+    cap.release()
+    path = crop_path(track, w, h, aspect)
+    return {"aspect": aspect, "path": path, "ffmpeg_crop": ffmpeg_crop_expr(path, w, h)}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="vibecut.sidecars.reframe")
     ap.add_argument("--video", required=True)
