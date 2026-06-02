@@ -75,6 +75,11 @@ window.addEventListener('DOMContentLoaded', function(){
   $('#play').addEventListener('click', togglePlay);
   $('#dlsrt').addEventListener('click', downloadSRT);
   $('#copyff').addEventListener('click', copyFfmpeg);
+  $('#undo').addEventListener('click', undo);
+  $('#redo').addEventListener('click', redo);
+  $('#saveproj').addEventListener('click', saveProject);
+  $('#loadbtn').addEventListener('click', function(){ $('#loadproj').click(); });
+  $('#loadproj').addEventListener('change', loadProject);
   doVibe(null);  // initial edit on the sample
 });
 
@@ -112,6 +117,7 @@ function doVibe(prev){
   var lt=$('#lowerthird')?$('#lowerthird').value.trim():'';
   if(lt) state.model.titles.push({text:lt,start:1,dur:3,kind:'lower-third'});
   if(state.musicName) state.model.music={url:state.musicName,gain:0.25,duck:true};
+  undoStack=[]; redoStack=[];
   applyAspect(); render();
 }
 function applyAspect(){
@@ -128,6 +134,8 @@ function render(){
   // clip chips with lock/delete
   $('#clips').innerHTML=m.clips.map(function(c,i){
     return '<div class="clip'+(c.locked?' locked':'')+'">#'+(i+1)+' '+(c.src_out-c.src_in).toFixed(1)+'s '
+      +'<button class="ghost sm" title="move left" onclick="moveClip('+i+',-1)">◀</button>'
+      +'<button class="ghost sm" title="move right" onclick="moveClip('+i+',1)">▶</button>'
       +'<button class="ghost sm" title="trim start" onclick="trimC('+i+',\'in\')">[+</button>'
       +'<button class="ghost sm" title="trim end" onclick="trimC('+i+',\'out\')">+]</button>'
       +'<button class="ghost sm" title="split" onclick="splitC('+i+')">⤲</button>'
@@ -148,13 +156,19 @@ function render(){
   $('#ffmpeg').textContent=VibeCut.ffmpeg(m, state.analysis.source_url||'clip.mp4');
   // editable captions
   $('#capeditor').innerHTML=m.captions.events.map(function(ev,i){
-    return '<div class="caprow"><span class="t">'+ev.start.toFixed(1)+'s</span>'
+    return '<div class="caprow"><span class="t">'+ev.start.toFixed(1)+'-'+ev.end.toFixed(1)+'s</span>'
+      +'<button class="ghost sm" title="start -" onclick="capNudge('+i+',\'start\',-0.1)">⟨</button>'
+      +'<button class="ghost sm" title="start +" onclick="capNudge('+i+',\'start\',0.1)">⟩</button>'
       +'<input type="text" value="'+escAttr(ev.words.map(function(w){return w.w;}).join(" "))
-      +'" onchange="editCap('+i+',this.value)"></div>'; }).join('') || '<span class="muted">no captions</span>';
+      +'" onchange="editCap('+i+',this.value)">'
+      +'<button class="ghost sm" title="end -" onclick="capNudge('+i+',\'end\',-0.1)">−</button>'
+      +'<button class="ghost sm" title="end +" onclick="capNudge('+i+',\'end\',0.1)">+</button></div>'; }).join('') || '<span class="muted">no captions</span>';
+  updUndo();
 }
 function escAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
 function editCap(i, text){
   var ev=state.model.captions.events[i]; if(!ev) return;
+  pushUndo();
   var toks=text.trim().split(/\s+/).filter(Boolean);
   if(!toks.length){ state.model.captions.events.splice(i,1); }
   else { var span=(ev.end-ev.start)/toks.length;
@@ -162,12 +176,32 @@ function editCap(i, text){
   $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4');
 }
 
-function recount(){ state.report.final=state.model.clips.reduce(function(s,c){return s+(c.src_out-c.src_in);},0); }
+function recount(){ state.report.final=state.model.clips.reduce(function(m,c){return Math.max(m,c.timeline_start+(c.src_out-c.src_in));},0); }
 function rederive(){ VibeCut.decorate(state.model, state.analysis, state.plan.ops, LIB); recount(); render(); }
-function toggleLock(i){ state.model.clips[i].locked=!state.model.clips[i].locked; render(); }
-function delClip(i){ state.model.clips.splice(i,1); VibeCut.relayout(state.model); rederive(); }
-function splitC(i){ VibeCut.splitClip(state.model, i); rederive(); }
-function trimC(i, side){ VibeCut.trimClip(state.model, i, side, side==='in'?0.2:-0.2); rederive(); }
+// undo/redo
+var undoStack=[], redoStack=[];
+function clone(o){ return JSON.parse(JSON.stringify(o)); }
+function pushUndo(){ undoStack.push(clone(state.model)); if(undoStack.length>60) undoStack.shift(); redoStack=[]; updUndo(); }
+function undo(){ if(!undoStack.length) return; redoStack.push(clone(state.model)); state.model=undoStack.pop(); render(); updUndo(); }
+function redo(){ if(!redoStack.length) return; undoStack.push(clone(state.model)); state.model=redoStack.pop(); render(); updUndo(); }
+function updUndo(){ if($("#undo")) $("#undo").disabled=!undoStack.length; if($("#redo")) $("#redo").disabled=!redoStack.length; }
+function toggleLock(i){ pushUndo(); state.model.clips[i].locked=!state.model.clips[i].locked; render(); }
+function delClip(i){ pushUndo(); state.model.clips.splice(i,1); VibeCut.relayout(state.model); rederive(); }
+function splitC(i){ pushUndo(); VibeCut.splitClip(state.model, i); rederive(); }
+function trimC(i, side){ pushUndo(); VibeCut.trimClip(state.model, i, side, side==='in'?0.2:-0.2); rederive(); }
+function moveClip(i, dir){ var j=i+dir, cs=state.model.clips; if(j<0||j>=cs.length) return; pushUndo();
+  var tmp=cs[i]; cs[i]=cs[j]; cs[j]=tmp; VibeCut.relayout(state.model); rederive(); }
+function capNudge(i, side, delta){ pushUndo(); var ev=state.model.captions.events[i]; if(!ev) return;
+  if(side==='start') ev.start=Math.max(0, Math.min(ev.end-0.1, ev.start+delta)); else ev.end=Math.max(ev.start+0.1, ev.end+delta);
+  $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); render(); }
+// project save / load
+function saveProject(){ var blob=new Blob([JSON.stringify({analysis:state.analysis, model:state.model, prompt:$('#prompt').value})],{type:'application/json'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='vibecut-project.json'; a.click(); }
+function loadProject(e){ var f=e.target.files[0]; if(!f) return; var r=new FileReader();
+  r.onload=function(){ try{ var d=JSON.parse(r.result); state.analysis=d.analysis; state.model=d.model;
+    if(d.prompt) $('#prompt').value=d.prompt; state.plan=VibeCut.planFromText(d.prompt||'', toggles());
+    undoStack=[]; redoStack=[]; applyAspect(); render(); }catch(err){ alert('Bad project file'); } };
+  r.readAsText(f); }
 
 /* ---- live preview: play kept ranges, overlay captions + punch-in zoom ---- */
 var playing=false, segIdx=0, raf=null, vt0=0, vstart=0;
@@ -288,6 +322,13 @@ TEMPLATE = """<!doctype html>
       <span class="muted">plays only the kept parts, with live captions + punch-in zoom</span></div>
     <div class="timeline" id="timeline"></div>
     <div class="clips" id="clips"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="undo" class="ghost sm">↶ Undo</button>
+      <button id="redo" class="ghost sm">↷ Redo</button>
+      <button id="saveproj" class="ghost sm">💾 Save project</button>
+      <button id="loadbtn" class="ghost sm">📂 Load project</button>
+      <input type="file" id="loadproj" accept=".json" style="display:none">
+    </div>
   </div>
 
   <div class="card"><div class="label">Edit plan</div><div id="plan"></div>
