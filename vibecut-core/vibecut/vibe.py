@@ -100,18 +100,26 @@ class RulesProvider:
         if dur is not None:
             ops.setdefault("target_duration", {})["max_seconds"] = dur
 
-        # ---- explicit toggles from the UI checkboxes (override text)
-        if toggles.get("zooms") is False:
-            ops.pop("punch_in", None)
-        if toggles.get("captions") is False:
-            ops.pop("add_captions", None)
-        if toggles.get("reframe") is False:
-            ops.pop("auto_reframe", None)
-            aspect = "16:9"
-        if toggles.get("broll") is False:
-            ops.pop("suggest_broll", None)
-        if toggles.get("enhance") is True:
-            ops.setdefault("enhance_speech", {})
+        # ---- explicit toggles from the UI checkboxes (authoritative: a True
+        # forces the op on, a False forces it off; absent leaves text behavior)
+        def toggle(name: str, op: str, on_params: dict | None = None,
+                   set_aspect: str | None = None) -> None:
+            nonlocal aspect
+            v = toggles.get(name)
+            if v is True:
+                ops.setdefault(op, dict(on_params or {}))
+                if set_aspect:
+                    aspect = set_aspect
+            elif v is False:
+                ops.pop(op, None)
+                if set_aspect:
+                    aspect = "16:9"
+
+        toggle("zooms", "punch_in", {"frequency": "high", "max_scale": 1.3})
+        toggle("captions", "add_captions")
+        toggle("broll", "suggest_broll")
+        toggle("reframe", "auto_reframe", {"target_aspect": "9:16"}, set_aspect="9:16")
+        toggle("enhance", "enhance_speech")
 
         raw = {
             "aspect": aspect,
