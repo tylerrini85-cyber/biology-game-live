@@ -393,7 +393,7 @@
     var off = 0, clips = [];
     keep.ranges.forEach(function (r) {
       var lk = locked.find(function (c) { return Math.abs(c.src_in - r[0]) < 1e-3 && Math.abs(c.src_out - r[1]) < 1e-3; });
-      clips.push({ src_in: r[0], src_out: r[1], timeline_start: off, locked: !!lk });
+      clips.push({ src_in: r[0], src_out: r[1], timeline_start: off, locked: !!lk, transition_in: "" });
       off += r[1] - r[0];
     });
     var model = { profile: { width: 1920, height: 1080 }, clips: clips, broll: [], notes: [],
@@ -580,7 +580,7 @@
       var crop = (H > W) ? "crop='min(iw,ih*" + W + "/" + H + ")':'min(ih,iw*" + H + "/" + W + ")'," : "";
       for (var i = 0; i < n; i++) parts.push("[v" + i + "]" + crop + "scale=" + W + ":" + H + ",setsar=1,fps=30,format=yuv420p[vn" + i + "]");
       var pv = "vn0";
-      for (var i = 1; i < n; i++) { parts.push("[" + pv + "][vn" + i + "]xfade=transition=" + XFADE[model.transition] + ":duration=" + D.toFixed(3) + ":offset=" + model.clips[i].timeline_start.toFixed(3) + "[vx" + i + "]"); pv = "vx" + i; }
+      for (var i = 1; i < n; i++) { var xfn = XFADE[model.clips[i].transition_in] || XFADE[model.transition]; parts.push("[" + pv + "][vn" + i + "]xfade=transition=" + xfn + ":duration=" + D.toFixed(3) + ":offset=" + model.clips[i].timeline_start.toFixed(3) + "[vx" + i + "]"); pv = "vx" + i; }
       vl = pv;
       var cvx = AC[model.transitionAudio || "constant-power"] || "qsin", ap = "a0";
       for (var i = 1; i < n; i++) { parts.push("[" + ap + "][a" + i + "]acrossfade=d=" + D.toFixed(3) + ":c1=" + cvx + ":c2=" + cvx + "[ax" + i + "]"); ap = "ax" + i; }
@@ -736,6 +736,8 @@ function render(){
       +'<button class="ghost sm" title="trim start" onclick="trimC('+i+',\'in\')">[+</button>'
       +'<button class="ghost sm" title="trim end" onclick="trimC('+i+',\'out\')">+]</button>'
       +'<button class="ghost sm" title="split" onclick="splitC('+i+')">⤲</button>'
+      +(i>0?'<select class="sm" title="transition into this clip" onchange="setClipTrans('+i+',this.value)">'
+        +['','cross-dissolve','wipe-left','wipe-right','slide-left','slide-up','iris','zoom'].map(function(o){return '<option value="'+o+'"'+(c.transition_in===o?' selected':'')+'>'+(o||'cut')+'</option>';}).join('')+'</select>':'')
       +'<button class="ghost sm" onclick="toggleLock('+i+')">'+(c.locked?'🔒':'🔓')+'</button>'
       +'<button class="ghost sm" onclick="delClip('+i+')">✕</button></div>'; }).join('');
   // persistent color preview filter (look + manual adjustments)
@@ -785,6 +787,8 @@ function addOverlay(){ if(!state.model) return; var txt=$('#ovtext').value.trim(
   state.model.titles.push({text:txt, start:parseFloat($('#ovstart').value)||0, dur:2.5, kind:$('#ovpos').value});
   $('#ovtext').value=''; render(); }
 function remOverlay(i){ pushUndo(); state.model.titles.splice(i,1); render(); }
+function setClipTrans(i, v){ pushUndo(); state.model.clips[i].transition_in=v;
+  $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); }
 function audioMix(){
   if(!state.model) return;
   state.model.voice_gain=parseFloat($('#voicegain').value);

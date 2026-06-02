@@ -363,6 +363,18 @@ class TestOverlapTransitions(unittest.TestCase):
         self.assertTrue(all(covered(w.t) for ev in model.captions.events for w in ev.words))
         self.assertTrue(any("transition_overlap_s" in o for o in rep["ops"]))
 
+    def test_per_clip_transition_override(self):
+        from vibecut.editplan import Op
+        from vibecut.render import build_ffmpeg_args
+        plan = RulesProvider().plan("add captions")
+        plan.ops.append(Op("transitions", {"style": "cross-dissolve", "duration": 0.3, "audio": "constant-power"}))
+        model, _ = apply_plan(plan, self.a)
+        model.video_track().clips[2].transition_in = "wipe-left"  # override one cut
+        fc = build_ffmpeg_args(model, self.a.source_url, "o.mp4")[
+            build_ffmpeg_args(model, self.a.source_url, "o.mp4").index("-filter_complex") + 1]
+        self.assertIn("xfade=transition=dissolve", fc)   # default cuts
+        self.assertIn("xfade=transition=wipeleft", fc)   # the overridden cut
+
     def test_xfade_baked_into_export(self):
         from vibecut.editplan import Op
         from vibecut.render import build_ffmpeg_args

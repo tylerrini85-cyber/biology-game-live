@@ -186,8 +186,9 @@ def _build(model: EditModel, ass_path: str):
         crop = (f"crop='min(iw,ih*{W}/{H})':'min(ih,iw*{H}/{W})'," if reframe else "")
         for i in range(n):
             parts.append(f"[v{i}]{crop}scale={W}:{H},setsar=1,fps=30,format=yuv420p[vn{i}]")
-        xf, prev = XFADE_MAP[style], "vn0"
+        prev = "vn0"
         for i in range(1, n):
+            xf = XFADE_MAP.get(vt.clips[i].transition_in, XFADE_MAP[style])  # per-cut override
             parts.append(f"[{prev}][vn{i}]xfade=transition={xf}:duration={D:.3f}:"
                          f"offset={vt.clips[i].timeline_start:.3f}[vx{i}]")
             prev = f"vx{i}"

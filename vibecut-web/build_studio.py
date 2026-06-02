@@ -145,6 +145,8 @@ function render(){
       +'<button class="ghost sm" title="trim start" onclick="trimC('+i+',\'in\')">[+</button>'
       +'<button class="ghost sm" title="trim end" onclick="trimC('+i+',\'out\')">+]</button>'
       +'<button class="ghost sm" title="split" onclick="splitC('+i+')">⤲</button>'
+      +(i>0?'<select class="sm" title="transition into this clip" onchange="setClipTrans('+i+',this.value)">'
+        +['','cross-dissolve','wipe-left','wipe-right','slide-left','slide-up','iris','zoom'].map(function(o){return '<option value="'+o+'"'+(c.transition_in===o?' selected':'')+'>'+(o||'cut')+'</option>';}).join('')+'</select>':'')
       +'<button class="ghost sm" onclick="toggleLock('+i+')">'+(c.locked?'🔒':'🔓')+'</button>'
       +'<button class="ghost sm" onclick="delClip('+i+')">✕</button></div>'; }).join('');
   // persistent color preview filter (look + manual adjustments)
@@ -194,6 +196,8 @@ function addOverlay(){ if(!state.model) return; var txt=$('#ovtext').value.trim(
   state.model.titles.push({text:txt, start:parseFloat($('#ovstart').value)||0, dur:2.5, kind:$('#ovpos').value});
   $('#ovtext').value=''; render(); }
 function remOverlay(i){ pushUndo(); state.model.titles.splice(i,1); render(); }
+function setClipTrans(i, v){ pushUndo(); state.model.clips[i].transition_in=v;
+  $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); }
 function audioMix(){
   if(!state.model) return;
   state.model.voice_gain=parseFloat($('#voicegain').value);
