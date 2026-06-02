@@ -1,0 +1,21 @@
+[package]
+name = "vibecut-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "VibeCut desktop (Tauri) — Phase 0 spike"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Phase-0 build-out (add when wiring native preview / decode):
+# wgpu = "0.20"          # GPU compositor surface (Metal/D3D12/Vulkan)
+# ffmpeg-next = "7"      # hardware decode into GPU textures
+# pollster = "0.3"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
