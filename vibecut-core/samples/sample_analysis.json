@@ -1,0 +1,308 @@
+{
+  "asset_id": "a1",
+  "source_url": "/footage/talk.mov",
+  "duration": 92.0,
+  "speech": [
+    [
+      2.0,
+      20.0
+    ],
+    [
+      30.0,
+      68.0
+    ],
+    [
+      78.0,
+      90.0
+    ]
+  ],
+  "scenes": [
+    0.0,
+    30.0,
+    78.0
+  ],
+  "words": [
+    {
+      "text": "hey",
+      "start": 2.0,
+      "dur": 0.9,
+      "emphasis": 0.38
+    },
+    {
+      "text": "everyone",
+      "start": 3.12,
+      "dur": 0.9,
+      "emphasis": 0.34
+    },
+    {
+      "text": "um",
+      "start": 4.25,
+      "dur": 0.9,
+      "emphasis": 0.1
+    },
+    {
+      "text": "welcome",
+      "start": 5.38,
+      "dur": 0.9,
+      "emphasis": 0.46
+    },
+    {
+      "text": "back",
+      "start": 6.5,
+      "dur": 0.9,
+      "emphasis": 0.32
+    },
+    {
+      "text": "so",
+      "start": 7.62,
+      "dur": 0.9,
+      "emphasis": 0.43
+    },
+    {
+      "text": "today",
+      "start": 8.75,
+      "dur": 0.9,
+      "emphasis": 0.39
+    },
+    {
+      "text": "i",
+      "start": 9.88,
+      "dur": 0.9,
+      "emphasis": 0.31
+    },
+    {
+      "text": "want",
+      "start": 11.0,
+      "dur": 0.9,
+      "emphasis": 0.43
+    },
+    {
+      "text": "to",
+      "start": 12.12,
+      "dur": 0.9,
+      "emphasis": 0.31
+    },
+    {
+      "text": "talk",
+      "start": 13.25,
+      "dur": 0.9,
+      "emphasis": 0.41
+    },
+    {
+      "text": "about",
+      "start": 14.38,
+      "dur": 0.9,
+      "emphasis": 0.32
+    },
+    {
+      "text": "something",
+      "start": 15.5,
+      "dur": 0.9,
+      "emphasis": 0.32
+    },
+    {
+      "text": "kind",
+      "start": 16.62,
+      "dur": 0.9,
+      "emphasis": 0.41
+    },
+    {
+      "text": "of",
+      "start": 17.75,
+      "dur": 0.9,
+      "emphasis": 0.51
+    },
+    {
+      "text": "important",
+      "start": 18.88,
+      "dur": 0.9,
+      "emphasis": 0.65
+    },
+    {
+      "text": "the",
+      "start": 30.0,
+      "dur": 1.69,
+      "emphasis": 0.36
+    },
+    {
+      "text": "biggest",
+      "start": 32.11,
+      "dur": 1.69,
+      "emphasis": 0.76
+    },
+    {
+      "text": "mistake",
+      "start": 34.22,
+      "dur": 1.69,
+      "emphasis": 0.84
+    },
+    {
+      "text": "uh",
+      "start": 36.33,
+      "dur": 1.69,
+      "emphasis": 0.1
+    },
+    {
+      "text": "people",
+      "start": 38.44,
+      "dur": 1.69,
+      "emphasis": 0.44
+    },
+    {
+      "text": "make",
+      "start": 40.56,
+      "dur": 1.69,
+      "emphasis": 0.4
+    },
+    {
+      "text": "is",
+      "start": 42.67,
+      "dur": 1.69,
+      "emphasis": 0.54
+    },
+    {
+      "text": "they",
+      "start": 44.78,
+      "dur": 1.69,
+      "emphasis": 0.31
+    },
+    {
+      "text": "give",
+      "start": 46.89,
+      "dur": 1.69,
+      "emphasis": 0.51
+    },
+    {
+      "text": "up",
+      "start": 49.0,
+      "dur": 1.69,
+      "emphasis": 0.37
+    },
+    {
+      "text": "like",
+      "start": 51.11,
+      "dur": 1.69,
+      "emphasis": 0.1
+    },
+    {
+      "text": "way",
+      "start": 53.22,
+      "dur": 1.69,
+      "emphasis": 0.34
+    },
+    {
+      "text": "too",
+      "start": 55.33,
+      "dur": 1.69,
+      "emphasis": 0.33
+    },
+    {
+      "text": "early",
+      "start": 57.44,
+      "dur": 1.69,
+      "emphasis": 0.38
+    },
+    {
+      "text": "before",
+      "start": 59.56,
+      "dur": 1.69,
+      "emphasis": 0.5
+    },
+    {
+      "text": "it",
+      "start": 61.67,
+      "dur": 1.69,
+      "emphasis": 0.35
+    },
+    {
+      "text": "ever",
+      "start": 63.78,
+      "dur": 1.69,
+      "emphasis": 0.45
+    },
+    {
+      "text": "works",
+      "start": 65.89,
+      "dur": 1.69,
+      "emphasis": 0.77
+    },
+    {
+      "text": "so",
+      "start": 78.0,
+      "dur": 0.74,
+      "emphasis": 0.39
+    },
+    {
+      "text": "remember",
+      "start": 78.92,
+      "dur": 0.74,
+      "emphasis": 0.75
+    },
+    {
+      "text": "just",
+      "start": 79.85,
+      "dur": 0.74,
+      "emphasis": 0.32
+    },
+    {
+      "text": "keep",
+      "start": 80.77,
+      "dur": 0.74,
+      "emphasis": 0.31
+    },
+    {
+      "text": "going",
+      "start": 81.69,
+      "dur": 0.74,
+      "emphasis": 0.35
+    },
+    {
+      "text": "and",
+      "start": 82.62,
+      "dur": 0.74,
+      "emphasis": 0.47
+    },
+    {
+      "text": "you",
+      "start": 83.54,
+      "dur": 0.74,
+      "emphasis": 0.41
+    },
+    {
+      "text": "will",
+      "start": 84.46,
+      "dur": 0.74,
+      "emphasis": 0.38
+    },
+    {
+      "text": "absolutely",
+      "start": 85.38,
+      "dur": 0.74,
+      "emphasis": 0.75
+    },
+    {
+      "text": "get",
+      "start": 86.31,
+      "dur": 0.74,
+      "emphasis": 0.41
+    },
+    {
+      "text": "there",
+      "start": 87.23,
+      "dur": 0.74,
+      "emphasis": 0.37
+    },
+    {
+      "text": "i",
+      "start": 88.15,
+      "dur": 0.74,
+      "emphasis": 0.5
+    },
+    {
+      "text": "promise",
+      "start": 89.08,
+      "dur": 0.74,
+      "emphasis": 0.78
+    }
+  ]
+}

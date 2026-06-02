@@ -1,0 +1,115 @@
+"""The Edit Model — the non-destructive JSON EDL (Spec §6).
+
+References media by source in/out points; never holds pixels. Both the vibe
+engine and the manual editor write here, and the render engine reads it.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field, asdict
+
+
+@dataclass
+class Profile:
+    width: int = 1080
+    height: int = 1920
+    fps: int = 30
+    colorspace: str = "rec709"
+
+
+@dataclass
+class Keyframe:
+    t: float          # timeline seconds
+    v: float          # value
+    interp: str = "bezier"  # linear | constant | bezier
+
+
+@dataclass
+class Effect:
+    type: str
+    params: dict = field(default_factory=dict)
+    keyframes: dict[str, list[Keyframe]] = field(default_factory=dict)
+
+
+@dataclass
+class Clip:
+    id: str
+    asset_id: str
+    src_in: float
+    src_out: float
+    timeline_start: float
+    origin: str = "vibe"     # vibe | manual
+    locked: bool = False      # re-vibe skips locked clips (Spec §3)
+    effects: list[Effect] = field(default_factory=list)
+
+    @property
+    def duration(self) -> float:
+        return self.src_out - self.src_in
+
+    @property
+    def timeline_end(self) -> float:
+        return self.timeline_start + self.duration
+
+
+@dataclass
+class Track:
+    id: str
+    kind: str  # video | audio
+    clips: list[Clip] = field(default_factory=list)
+    filters: list[Effect] = field(default_factory=list)
+
+
+@dataclass
+class CaptionWord:
+    w: str
+    t: float   # absolute timeline start
+    d: float   # duration
+
+
+@dataclass
+class CaptionEvent:
+    start: float
+    end: float
+    words: list[CaptionWord] = field(default_factory=list)
+
+    @property
+    def text(self) -> str:
+        return " ".join(cw.w for cw in self.words)
+
+
+@dataclass
+class Captions:
+    track_id: str = "CAP1"
+    style: str = "minimal"
+    position: str = "lower-mid"
+    highlight_color: str = "#FFE000"
+    events: list[CaptionEvent] = field(default_factory=list)
+
+
+@dataclass
+class EditModel:
+    profile: Profile = field(default_factory=Profile)
+    tracks: list[Track] = field(default_factory=list)
+    captions: Captions = field(default_factory=Captions)
+    notes: list[str] = field(default_factory=list)  # engine warnings / decisions
+
+    def video_track(self) -> Track:
+        for t in self.tracks:
+            if t.kind == "video":
+                return t
+        t = Track(id="V1", kind="video")
+        self.tracks.append(t)
+        return t
+
+    def audio_track(self) -> Track:
+        for t in self.tracks:
+            if t.kind == "audio":
+                return t
+        t = Track(id="A1", kind="audio")
+        self.tracks.append(t)
+        return t
+
+    def total_duration(self) -> float:
+        return max((c.timeline_end for tr in self.tracks for c in tr.clips), default=0.0)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
