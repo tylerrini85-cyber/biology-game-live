@@ -45,6 +45,8 @@ OP_SPEC: dict[str, dict] = {
     "suggest_broll":     {"density": ("medium", None, None), "query": ("auto", None, None)},
     "color_look":        {"look": ("warm", None, None), "amount": (0.8, 0.0, 1.0)},
     "transitions":       {"style": ("fade", None, None), "duration": (0.4, 0.1, 2.0)},
+    "speed":             {"factor": (1.0, 0.25, 4.0)},
+    "add_title":         {"text": ("", None, None), "duration": (2.5, 0.5, 10.0)},
 }
 
 DENSITY = ["low", "medium", "high"]

@@ -209,6 +209,36 @@ class TestColorAndTransitions(unittest.TestCase):
         self.assertTrue(any(cw.w.upper() in ass for ev in model.captions.events for cw in ev.words))
 
 
+class TestSpeedTitleAudio(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+
+    def test_vibe_detects_speed(self):
+        self.assertEqual(next(o for o in RulesProvider().plan("slow motion").ops if o.op == "speed").params["factor"], 0.5)
+        self.assertEqual(next(o for o in RulesProvider().plan("speed it up").ops if o.op == "speed").params["factor"], 1.5)
+
+    def test_speed_baked_into_export(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("slow motion"), self.a)
+        args = build_ffmpeg_args(model, self.a.source_url, "out.mp4")
+        fc = args[args.index("-filter_complex") + 1]
+        self.assertIn("setpts=PTS/0.5", fc)   # video time-remap
+        self.assertIn("atempo=", fc)           # audio time-remap
+
+    def test_title_renders_in_ass(self):
+        model, _ = apply_plan(RulesProvider().plan("add captions"), self.a)
+        model.titles.append({"text": "My Channel", "start": 0.0, "dur": 2.5})
+        ass = build_ass(model.captions, titles=model.titles)
+        self.assertIn("Style: Title", ass)
+        self.assertIn("My Channel", ass)
+
+    def test_enhance_uses_afftdn(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("clean up the audio noise"), self.a)
+        args = build_ffmpeg_args(model, self.a.source_url, "out.mp4")
+        self.assertIn("afftdn", args[args.index("-filter_complex") + 1])
+
+
 class TestBroll(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)

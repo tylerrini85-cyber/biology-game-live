@@ -59,7 +59,8 @@ def _ts(t: float) -> str:
     return f"{h}:{m:02d}:{s:02d}.{cs:02d}"
 
 
-def build_ass(captions: Captions, width: int = 1080, height: int = 1920) -> str:
+def build_ass(captions: Captions, width: int = 1080, height: int = 1920,
+              titles: list | None = None) -> str:
     primary = "&HFFFFFF&"
     highlight = _hex_to_ass(captions.highlight_color)
     boldish = captions.style in ("bold-karaoke", "hype", "neon")
@@ -80,10 +81,16 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920) -> str:
          "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding"),
         (f"Style: Vibe,{font},{fontsize},{primary},{highlight},&H000000&,"
          f"&H80000000&,{bold},0,1,{outline},2,2,40,40,{margin_v},1"),
+        (f"Style: Title,{font},{int(fontsize * 1.4)},{primary},{primary},&H000000&,"
+         f"&H80000000&,-1,0,1,5,3,8,60,60,{int(height * 0.10)},1"),
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
     ]
+    for tt in (titles or []):
+        text = (tt.get("text") or "").upper() if captions.uppercase else (tt.get("text") or "")
+        st, en = float(tt.get("start", 0.0)), float(tt.get("start", 0.0)) + float(tt.get("dur", 2.5))
+        lines.append(f"Dialogue: 0,{_ts(st)},{_ts(en)},Title,,0,0,0,,{text}")
     for ev in captions.events:
         # karaoke: \kNN gives each word a highlight duration in centiseconds
         chunks = []
@@ -138,13 +145,17 @@ def _build(model: EditModel, ass_path: str):
         parts.append(f"[0:a]atrim=start={c.src_in:.3f}:end={c.src_out:.3f},asetpts=PTS-STARTPTS[a{i}]")
     parts.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[vc][ac]")
 
+    speed_f = next((f.params.get("factor", 1.0) for f in vt.filters if f.type == "speed"), 1.0)
     afilters = []
     for f in at.filters:
         if f.type == "loudnorm":
             p = f.params
             afilters.append(f"loudnorm=I={p['i']}:TP={p['tp']}:LRA={p['lra']}")
         elif f.type == "deepfilternet":
-            afilters.append("anlmdn")  # stand-in; real build runs DeepFilterNet3
+            # ffmpeg-native speech denoise (DeepFilterNet is the desktop upgrade)
+            afilters.append("afftdn=nf=-25,highpass=f=90,lowpass=f=12000")
+    if abs(float(speed_f) - 1.0) > 1e-3:
+        afilters += _atempo_chain(float(speed_f))
     parts.append("[ac]" + ",".join(afilters or ["anull"]) + "[aout]")
 
     reframe = any(f.type == "auto_reframe" for f in vt.filters)
@@ -196,10 +207,27 @@ def _build(model: EditModel, ass_path: str):
         total = sum(c.src_out - c.src_in for c in vt.clips)
         d = float(tr.params.get("duration", 0.4))
         st = max(0.0, total - d)
-        parts.append(f"[{vlabel}]fade=t=in:st=0:d={d:.3f},fade=t=out:st={st:.3f}:d={d:.3f}[vout]")
+        parts.append(f"[{vlabel}]fade=t=in:st=0:d={d:.3f},fade=t=out:st={st:.3f}:d={d:.3f}[vtr]")
+        vlabel = "vtr"
+
+    # speed / time-remap (applied last so captions + fades remap with the video)
+    if abs(float(speed_f) - 1.0) > 1e-3:
+        parts.append(f"[{vlabel}]setpts=PTS/{float(speed_f):.4f}[vout]")
     else:
         parts.append(f"[{vlabel}]null[vout]")
     return ";".join(parts), broll_paths, skipped
+
+
+def _atempo_chain(factor: float) -> list[str]:
+    """atempo accepts 0.5–2.0; chain for factors outside that range."""
+    out = []
+    f = factor
+    while f > 2.0:
+        out.append("atempo=2.0"); f /= 2.0
+    while f < 0.5:
+        out.append("atempo=0.5"); f *= 2.0
+    out.append(f"atempo={f:.3f}")
+    return out
 
 
 def build_ffmpeg_args(model: EditModel, src_url: str, out_path: str,

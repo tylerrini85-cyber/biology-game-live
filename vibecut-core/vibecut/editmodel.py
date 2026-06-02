@@ -94,6 +94,7 @@ class EditModel:
     profile: Profile = field(default_factory=Profile)
     tracks: list[Track] = field(default_factory=list)
     captions: Captions = field(default_factory=Captions)
+    titles: list[dict] = field(default_factory=list)  # [{text,start,dur}]
     notes: list[str] = field(default_factory=list)  # engine warnings / decisions
 
     def video_track(self) -> Track:
@@ -156,7 +157,7 @@ class EditModel:
                             size=cap_d.get("size", 0),
                             events=events)
         return cls(profile=prof, tracks=tracks, captions=captions,
-                   notes=list(d.get("notes", [])))
+                   titles=list(d.get("titles", [])), notes=list(d.get("notes", [])))
 
     def save(self, path: str) -> None:
         with open(path, "w", encoding="utf-8") as fh:

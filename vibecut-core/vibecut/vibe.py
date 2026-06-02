@@ -112,6 +112,14 @@ class RulesProvider:
         elif "clean captions" in t or "simple captions" in t:
             add("add_captions", style="clean")
 
+        # ---- speed / time-remap
+        if "slow motion" in t or "slow-mo" in t or "slomo" in t or "slo-mo" in t or "slow it down" in t:
+            ops.setdefault("speed", {})["factor"] = 0.5
+        elif "double speed" in t or "2x" in t or "twice as fast" in t:
+            ops.setdefault("speed", {})["factor"] = 2.0
+        elif "speed up" in t or "speed it up" in t or "sped up" in t or "faster" in t or "fast paced" in t:
+            ops.setdefault("speed", {})["factor"] = 1.5
+
         # ---- b-roll (retrieved from the user's own library; never generated)
         if any(k in t for k in ("b-roll", "broll", "b roll", "cutaway", "cutaways",
                                 "add visuals", "stock footage")):

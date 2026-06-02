@@ -15,7 +15,7 @@ import os
 
 from .analysis import AssetAnalysis
 from .editmodel import EditModel
-from .editplan import to_plain
+from .editplan import Op, to_plain
 from .engine import apply_plan
 from .render import build_ass, build_ffmpeg_command, render_to_file
 from .report import render_html
@@ -30,10 +30,13 @@ def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
         encoder: str, toggles: dict, use_llm: bool, model: str,
         from_project: str | None = None, save_project: str | None = None,
         lock_clips: list[int] | None = None, html_path: str | None = None,
-        media_library_path: str | None = None, render_path: str | None = None) -> dict:
+        media_library_path: str | None = None, render_path: str | None = None,
+        title: str | None = None) -> dict:
     analysis = AssetAnalysis.load(analysis_path)
     provider = make_provider(use_llm=use_llm, model=model) if use_llm else make_provider()
     plan = provider.plan(prompt, toggles)
+    if title:
+        plan.ops.append(Op("add_title", {"text": title, "duration": 2.5}))
 
     library = None
     if media_library_path:
@@ -54,7 +57,8 @@ def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
     if save_project:
         edit_model.save(save_project)
 
-    ass = build_ass(edit_model.captions, edit_model.profile.width, edit_model.profile.height)
+    ass = build_ass(edit_model.captions, edit_model.profile.width, edit_model.profile.height,
+                    titles=edit_model.titles)
     with open(ass_path, "w", encoding="utf-8") as fh:
         fh.write(ass)
     cmd = build_ffmpeg_command(edit_model, analysis.source_url, out_path,
@@ -90,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--html", metavar="PATH", help="write a visual HTML edit report")
     ap.add_argument("--media-library", metavar="PATH", help="JSON of your own clips for b-roll suggestions")
     ap.add_argument("--render", metavar="OUT.mp4", help="actually run FFmpeg to export the MP4 (needs ffmpeg + real source)")
+    ap.add_argument("--title", metavar="TEXT", help="add an intro title card")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON only")
     args = ap.parse_args(argv)
 
@@ -103,7 +108,7 @@ def main(argv: list[str] | None = None) -> int:
               toggles, args.llm, args.model, from_project=args.revibe,
               save_project=args.save_project, lock_clips=args.lock_clip,
               html_path=args.html, media_library_path=args.media_library,
-              render_path=args.render)
+              render_path=args.render, title=args.title)
 
     if args.json:
         out = {k: v for k, v in res.items() if k != "edit_model"}

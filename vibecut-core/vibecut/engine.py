@@ -152,6 +152,16 @@ def transitions(p: dict, model: EditModel) -> None:
         Effect(type="transition", params={"style": p["style"], "duration": p["duration"]}))
 
 
+def speed(p: dict, model: EditModel) -> None:
+    model.video_track().filters.append(Effect(type="speed", params={"factor": p["factor"]}))
+
+
+def add_title(p: dict, model: EditModel) -> None:
+    text = (p.get("text") or "").strip()
+    if text:
+        model.titles.append({"text": text, "start": 0.0, "dur": p.get("duration", 2.5)})
+
+
 def punch_in(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel,
              protect: list[tuple] | None = None) -> int:
     protect = protect or []
@@ -336,6 +346,13 @@ def apply_plan(plan: EditPlan, a: AssetAnalysis,
     if "transitions" in params:
         transitions(params["transitions"], model)
         report["ops"].append({"transitions": params["transitions"]["style"]})
+    if "speed" in params:
+        speed(params["speed"], model)
+        report["ops"].append({"speed": params["speed"]["factor"]})
+    if "add_title" in params:
+        add_title(params["add_title"], model)
+        if model.titles:
+            report["ops"].append({"add_title": model.titles[-1]["text"]})
     if "normalize_loudness" in params:
         normalize_loudness(params["normalize_loudness"], model)
         report["ops"].append({"normalize_loudness": params["normalize_loudness"]["i"]})
