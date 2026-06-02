@@ -73,7 +73,12 @@ window.addEventListener('DOMContentLoaded', function(){
   doVibe(null);  // initial edit on the sample
 });
 
-function toggles(){ var t={}; OPTS.forEach(function(o){ t[o[0]]=$('#t_'+o[0]).checked; }); return t; }
+function toggles(){ var t={}; OPTS.forEach(function(o){ t[o[0]]=$('#t_'+o[0]).checked; });
+  if($('#look')) t.look=$('#look').value;
+  if($('#t_fade')) t.transition=$('#t_fade').checked;
+  if($('#capstyle')) t.capStyle=$('#capstyle').value;
+  if($('#t_upper')) t.upper=$('#t_upper').checked;
+  return t; }
 
 function loadVideo(e){
   var f=e.target.files[0]; if(!f) return;
@@ -111,8 +116,13 @@ function render(){
   // clip chips with lock/delete
   $('#clips').innerHTML=m.clips.map(function(c,i){
     return '<div class="clip'+(c.locked?' locked':'')+'">#'+(i+1)+' '+(c.src_out-c.src_in).toFixed(1)+'s '
+      +'<button class="ghost sm" title="trim start" onclick="trimC('+i+',\'in\')">[+</button>'
+      +'<button class="ghost sm" title="trim end" onclick="trimC('+i+',\'out\')">+]</button>'
+      +'<button class="ghost sm" title="split" onclick="splitC('+i+')">⤲</button>'
       +'<button class="ghost sm" onclick="toggleLock('+i+')">'+(c.locked?'🔒':'🔓')+'</button>'
       +'<button class="ghost sm" onclick="delClip('+i+')">✕</button></div>'; }).join('');
+  // persistent color-look preview filter
+  $('#vwrap').style.filter=(m.colorLook && VibeCut.LOOK_CSS[m.colorLook])?VibeCut.LOOK_CSS[m.colorLook]:'none';
   // plan + stats
   $('#plan').innerHTML=rep.ops.map(function(o){return '<span class="chip">'+o[0]+'</span>';}).join('');
   var pct=rep.original?100*rep.final/rep.original:0;
@@ -126,13 +136,12 @@ function render(){
   $('#ffmpeg').textContent=VibeCut.ffmpeg(m, state.analysis.source_url||'clip.mp4');
 }
 
+function recount(){ state.report.final=state.model.clips.reduce(function(s,c){return s+(c.src_out-c.src_in);},0); }
+function rederive(){ VibeCut.decorate(state.model, state.analysis, state.plan.ops, LIB); recount(); render(); }
 function toggleLock(i){ state.model.clips[i].locked=!state.model.clips[i].locked; render(); }
-function delClip(i){
-  state.model.clips.splice(i,1); VibeCut.relayout(state.model);
-  VibeCut.decorate(state.model, state.analysis, state.plan.ops, LIB);
-  state.report.final=state.model.clips.reduce(function(s,c){return s+(c.src_out-c.src_in);},0);
-  render();
-}
+function delClip(i){ state.model.clips.splice(i,1); VibeCut.relayout(state.model); rederive(); }
+function splitC(i){ VibeCut.splitClip(state.model, i); rederive(); }
+function trimC(i, side){ VibeCut.trimClip(state.model, i, side, side==='in'?0.2:-0.2); rederive(); }
 
 /* ---- live preview: play kept ranges, overlay captions + punch-in zoom ---- */
 var playing=false, segIdx=0, raf=null, vt0=0, vstart=0;
@@ -210,6 +219,12 @@ TEMPLATE = """<!doctype html>
     <div style="margin-top:14px"><div class="label">3 &middot; Describe the edit</div>
       <input type="text" id="prompt" value="punchy, under 45 seconds, bold captions for tiktok, clean audio"></div>
     <div class="toggles" id="toggles"></div>
+    <div class="toggles" style="margin-top:6px">
+      <label>Look <select id="look"><option>none</option><option>warm</option><option>cool</option><option>vivid</option><option>bw</option><option>film</option><option>bright</option></select></label>
+      <label><input type="checkbox" id="t_fade"> Fade in/out</label>
+      <label>Caption style <select id="capstyle"><option>minimal</option><option selected>bold-karaoke</option><option>hype</option><option>neon</option><option>clean</option><option>lower-third</option></select></label>
+      <label><input type="checkbox" id="t_upper"> UPPERCASE</label>
+    </div>
     <div class="row" style="margin-top:14px">
       <button id="vibe">Vibe it &#9654;</button>
       <button id="revibe" class="ghost">Re-vibe (keeps 🔒 locked)</button>

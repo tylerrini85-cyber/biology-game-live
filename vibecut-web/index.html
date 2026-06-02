@@ -181,6 +181,20 @@
     if (/b-roll|broll|b roll|cutaway|cutaways|add visuals|stock footage/.test(t)) ops.suggest_broll = ops.suggest_broll || {};
     if (/enhance|clean audio|denoise|noise|clarity/.test(t)) ops.enhance_speech = ops.enhance_speech || {};
 
+    // color grade / look
+    if (/warm/.test(t)) set("color_look", { look: "warm" });
+    else if (/cool|moody/.test(t)) set("color_look", { look: "cool" });
+    else if (/black and white|b&w|grayscale|monochrome/.test(t)) set("color_look", { look: "bw" });
+    else if (/vivid|saturated|vibrant/.test(t)) set("color_look", { look: "vivid" });
+    else if (/film|cinematic|vintage|filmic/.test(t)) set("color_look", { look: "film" });
+    else if (/bright/.test(t)) set("color_look", { look: "bright" });
+    // transitions
+    if (/crossfade|cross dissolve|dissolve/.test(t)) ops.transitions = { style: "dissolve" };
+    else if (/fade|cinematic/.test(t)) ops.transitions = { style: "fade" };
+    // caption tweaks
+    if (/uppercase|all caps|all-caps/.test(t)) set("add_captions", { uppercase: true });
+    if (/neon/.test(t)) set("add_captions", { style: "neon" });
+
     var dur = findDuration(t);
     if (dur != null) (ops.target_duration = ops.target_duration || {}).max_seconds = dur;
 
@@ -196,6 +210,13 @@
     tog("reframe", "auto_reframe", null, "9:16");
     if (toggles.reframe === true) ops.auto_reframe = ops.auto_reframe || { target_aspect: "9:16" };
     tog("enhance", "enhance_speech");
+    // value toggles from Studio controls
+    if (toggles.look && toggles.look !== "none") set("color_look", { look: toggles.look });
+    else if (toggles.look === "none") delete ops.color_look;
+    if (toggles.transition === true) ops.transitions = ops.transitions || { style: "fade" };
+    else if (toggles.transition === false) delete ops.transitions;
+    if (toggles.capStyle) set("add_captions", { style: toggles.capStyle });
+    if (toggles.upper === true) set("add_captions", { uppercase: true });
 
     return { aspect: aspect, target: dur, ops: ops };
   }
@@ -302,8 +323,8 @@
     function survivor(w) { return clips.some(function (c) { return c.src_in - EPS <= w.mid && w.mid <= c.src_out + EPS; }); }
     function push(op, info) { if (report) report.ops.push([op, info]); }
 
-    model.captions = { style: "minimal", highlight: "#FFE000", events: [] };
-    model.zoomKeyframes = []; model.broll = [];
+    model.captions = { style: "minimal", highlight: "#FFE000", events: [], uppercase: false, font: "Arial" };
+    model.zoomKeyframes = []; model.broll = []; model.colorLook = null; model.transition = null;
 
     if (P.add_captions) {
       var style = P.add_captions.style || "minimal", maxw = 4, events = [], line = [];
@@ -313,7 +334,8 @@
         line.push({ w: w.text, t: tt, st: w.start, d: w.dur }); if (line.length >= maxw) flush();
       });
       flush();
-      model.captions = { style: style, highlight: "#FFE000", events: events };
+      model.captions = { style: style, highlight: "#FFE000", events: events,
+                         uppercase: !!P.add_captions.uppercase, font: P.add_captions.font || "Arial" };
       push("add_captions", events.length + " events");
     }
     if (P.punch_in) {
@@ -344,6 +366,33 @@
       model.profile = { width: d[0], height: d[1] };
       push("auto_reframe", P.auto_reframe.target_aspect || "9:16");
     }
+    if (P.color_look) { model.colorLook = P.color_look.look || "warm"; push("color_look", model.colorLook); }
+    if (P.transitions) { model.transition = P.transitions.style || "fade"; push("transitions", model.transition); }
+  }
+
+  var LOOK_FILTERS = {
+    warm: "eq=gamma_r=1.06:gamma_b=0.94:saturation=1.06", cool: "eq=gamma_b=1.06:gamma_r=0.95:saturation=1.03",
+    vivid: "eq=saturation=1.4:contrast=1.1", bw: "hue=s=0,eq=contrast=1.08",
+    film: "curves=preset=medium_contrast,eq=saturation=0.92", bright: "eq=brightness=0.06:contrast=1.05"
+  };
+  var LOOK_CSS = {
+    warm: "saturate(1.1) sepia(.12)", cool: "saturate(1.05) hue-rotate(-8deg) brightness(1.02)",
+    vivid: "saturate(1.5) contrast(1.1)", bw: "grayscale(1) contrast(1.08)",
+    film: "sepia(.18) saturate(.92) contrast(1.05)", bright: "brightness(1.08) contrast(1.05)"
+  };
+
+  function splitClip(model, i, atTimeline) {
+    var c = model.clips[i], dur = c.src_out - c.src_in;
+    var cut = (atTimeline != null) ? c.src_in + (atTimeline - c.timeline_start) : c.src_in + dur / 2;
+    cut = Math.max(c.src_in + 0.05, Math.min(c.src_out - 0.05, cut));
+    var b = { src_in: cut, src_out: c.src_out, timeline_start: 0, locked: c.locked };
+    c.src_out = cut; model.clips.splice(i + 1, 0, b); relayout(model);
+  }
+  function trimClip(model, i, side, delta) {
+    var c = model.clips[i];
+    if (side === "in") c.src_in = Math.max(0, Math.min(c.src_out - 0.1, c.src_in + delta));
+    else c.src_out = Math.max(c.src_in + 0.1, c.src_out + delta);
+    relayout(model);
   }
 
   // recompute timeline_start after manual edits (delete/reorder)
@@ -395,13 +444,21 @@
     var cc = model.clips.map(function (_, i) { return "[v" + i + "][a" + i + "]"; }).join("");
     parts.push(cc + "concat=n=" + model.clips.length + ":v=1:a=1[vc][ac]");
     parts.push("[ac]loudnorm=I=-16:TP=-1.5:LRA=11[aout]");
-    parts.push("[vc]ass=captions.ass[vout]");
+    var vl = "vc";
+    if (model.colorLook && LOOK_FILTERS[model.colorLook]) { parts.push("[" + vl + "]" + LOOK_FILTERS[model.colorLook] + "[vcol]"); vl = "vcol"; }
+    parts.push("[" + vl + "]ass=captions.ass[vcap]"); vl = "vcap";
+    if (model.transition) {
+      var total = model.clips.reduce(function (s, c) { return s + (c.src_out - c.src_in); }, 0);
+      var d = 0.4, st = Math.max(0, total - d);
+      parts.push("[" + vl + "]fade=t=in:st=0:d=" + d + ",fade=t=out:st=" + st.toFixed(3) + ":d=" + d + "[vout]");
+    } else parts.push("[" + vl + "]null[vout]");
     return 'ffmpeg -i "' + src + '" -filter_complex "' + parts.join(";") +
            '" -map "[vout]" -map "[aout]" -c:v ' + enc + ' -b:v 12M -c:a aac -b:a 192k "out.mp4"';
   }
 
   root.VibeCut = { planFromText: planFromText, edit: edit, decorate: decorate, ffmpeg: ffmpeg,
                    relayout: relayout, zoomScaleAt: zoomScaleAt, analysisFromSRT: analysisFromSRT,
+                   splitClip: splitClip, trimClip: trimClip, LOOK_CSS: LOOK_CSS,
                    KeepList: KeepList, subtract: subtract, complement: complement };
   if (typeof module !== "undefined" && module.exports) module.exports = root.VibeCut;
 })(typeof globalThis !== "undefined" ? globalThis : this);
