@@ -31,8 +31,8 @@ CSS = """
   button.sm{padding:3px 8px;font-size:12px;font-weight:600}
   .preview{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
   .preview.vert{aspect-ratio:9/16;max-height:520px;margin:0 auto}
-  #vwrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transition:transform .05s linear}
-  #video{max-width:100%;max-height:100%;background:#000}
+  #vwrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transition:transform .05s linear;transform-origin:center center}
+  #video{width:100%;height:100%;object-fit:contain;background:#000}
   #placeholder{color:#444;font-size:14px;text-align:center;padding:20px}
   #broll{position:absolute;inset:0;background:#101418 center/cover no-repeat;display:none;align-items:center;justify-content:center;color:var(--accent);font-weight:700}
   #caps{position:absolute;left:0;right:0;bottom:9%;text-align:center;padding:0 8%;pointer-events:none}
@@ -59,6 +59,9 @@ CSS = """
 UI = r"""
 var A = SAMPLE, LIB = LIBRARY;
 var state = { analysis: A, model: null, report: null, plan: null, hasVideo: false };
+// surface any error visibly instead of silently freezing
+window.addEventListener('error', function(e){ showErr((e.error && e.error.message) || e.message); });
+function showErr(msg){ var b=document.getElementById('errbar'); if(b){ b.style.display='block'; b.textContent='⚠ ' + msg + ' — send this to Claude.'; } }
 var OPTS = [["captions","Captions"],["zooms","Auto-zoom"],["broll","B-roll"],["reframe","Vertical"],["enhance","Enhance audio"]];
 var $ = function(s){ return document.querySelector(s); };
 function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
@@ -120,6 +123,7 @@ function loadSRT(e){
 }
 
 function doVibe(prev){
+ try {
   stopPlay();
   state.plan = VibeCut.planFromText($('#prompt').value, toggles());
   var r = VibeCut.edit(state.analysis, state.plan, LIB, prev);
@@ -131,6 +135,7 @@ function doVibe(prev){
   if(state.musicName) state.model.music={url:state.musicName,gain:0.25,duck:true};
   undoStack=[]; redoStack=[];
   applyAspect(); render();
+ } catch(err){ showErr('vibe failed: ' + (err && err.message || err)); }
 }
 function applyAspect(){
   var vert = state.model.profile.height > state.model.profile.width;
@@ -358,6 +363,7 @@ TEMPLATE = """<!doctype html>
 <title>VibeCut Studio</title><style>__CSS__</style></head>
 <body><div class="wrap">
   <h1><span class="logo">&#9670; VibeCut Studio</span></h1>
+  <div id="errbar" style="display:none;background:#3a1620;border:1px solid #ff6b6b;color:#ffb3b3;padding:10px 12px;border-radius:8px;margin:10px 0;font-size:13px"></div>
   <p class="sub">Load a clip + captions, vibe-edit, watch it play back, fine-tune by hand, or re-vibe.
      Runs fully in your browser &mdash; no server, install, APIs, or generation.</p>
 
