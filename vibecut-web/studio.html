@@ -393,7 +393,7 @@
     var off = 0, clips = [];
     keep.ranges.forEach(function (r) {
       var lk = locked.find(function (c) { return Math.abs(c.src_in - r[0]) < 1e-3 && Math.abs(c.src_out - r[1]) < 1e-3; });
-      clips.push({ src_in: r[0], src_out: r[1], timeline_start: off, locked: !!lk, transition_in: "" });
+      clips.push({ src_in: r[0], src_out: r[1], timeline_start: off, locked: !!lk, transition_in: "", speed: 1 });
       off += r[1] - r[0];
     });
     var model = { profile: { width: 1920, height: 1080 }, clips: clips, broll: [], notes: [],
@@ -404,6 +404,7 @@
     if (P.normalize_loudness) report.ops.push(["normalize_loudness", "-16 LUFS"]);
     if (P.enhance_speech) report.ops.push(["enhance_speech", "on"]);
 
+    applyClipSpeed(model);  // per-clip speed warp (before overlap compression)
     // overlap transitions (xfade): compress timeline so cross-fades line up and
     // captions/zooms stay synced (each cut overlaps by D)
     if (model.transition && XFADE[model.transition] && clips.length > 1) {
@@ -525,6 +526,24 @@
     relayout(model);
   }
 
+  // warp timeline + captions/zooms by each clip's per-clip speed
+  function applyClipSpeed(model) {
+    var clips = model.clips;
+    if (!clips.length || clips.every(function (c) { return Math.abs((c.speed || 1) - 1) < 1e-6; })) return;
+    var cstarts = clips.map(function (c) { return c.timeline_start; });
+    var cdurs = clips.map(function (c) { return c.src_out - c.src_in; });
+    var ns = [], o = 0;
+    clips.forEach(function (c, i) { ns.push(o); o += cdurs[i] / (c.speed || 1); });
+    var warp = function (t) {
+      for (var i = 0; i < clips.length; i++) { var cs = cstarts[i], d = cdurs[i];
+        if (t < cs + d - 1e-6 || i === clips.length - 1) { var off = Math.min(Math.max(t - cs, 0), d); return ns[i] + off / (clips[i].speed || 1); } }
+      return o;
+    };
+    clips.forEach(function (c, i) { c.timeline_start = ns[i]; });
+    (model.broll || []).forEach(function (b) { b.timeline_start = warp(b.timeline_start); });
+    model.captions.events.forEach(function (ev) { ev.start = warp(ev.start); ev.end = warp(ev.end); ev.words.forEach(function (w) { w.t = warp(w.t); }); });
+    (model.zoomKeyframes || []).forEach(function (k) { k.a = warp(k.a); k.b = warp(k.b); k.c = warp(k.c); });
+  }
   // recompute timeline_start after manual edits (delete/reorder)
   function relayout(model) {
     var off = 0;
@@ -566,10 +585,15 @@
     enc = enc || "h264_videotoolbox";
     var parts = [];
     model.clips.forEach(function (c, i) {
-      parts.push("[0:v]trim=start=" + c.src_in.toFixed(3) + ":end=" + c.src_out.toFixed(3) + ",setpts=PTS-STARTPTS[v" + i + "]");
+      var ch = "[0:v]trim=start=" + c.src_in.toFixed(3) + ":end=" + c.src_out.toFixed(3) + ",setpts=PTS-STARTPTS";
+      if (Math.abs((c.speed || 1) - 1) > 1e-3) ch += ",setpts=PTS/" + (c.speed).toFixed(4);
+      parts.push(ch + "[v" + i + "]");
     });
     model.clips.forEach(function (c, i) {
-      parts.push("[0:a]atrim=start=" + c.src_in.toFixed(3) + ":end=" + c.src_out.toFixed(3) + ",asetpts=PTS-STARTPTS[a" + i + "]");
+      var ch = "[0:a]atrim=start=" + c.src_in.toFixed(3) + ":end=" + c.src_out.toFixed(3) + ",asetpts=PTS-STARTPTS";
+      var s = c.speed || 1;
+      if (Math.abs(s - 1) > 1e-3) { var ff = s, ats = []; while (ff > 2) { ats.push("atempo=2.0"); ff /= 2; } while (ff < 0.5) { ats.push("atempo=0.5"); ff *= 2; } ats.push("atempo=" + ff.toFixed(3)); ch += "," + ats.join(","); }
+      parts.push(ch + "[a" + i + "]");
     });
     var n = model.clips.length, W = model.profile.width, H = model.profile.height;
     var overlap = model.transition && XFADE[model.transition] && n > 1;
@@ -639,7 +663,7 @@
 
   root.VibeCut = { planFromText: planFromText, edit: edit, decorate: decorate, ffmpeg: ffmpeg,
                    relayout: relayout, zoomScaleAt: zoomScaleAt, analysisFromSRT: analysisFromSRT,
-                   splitClip: splitClip, trimClip: trimClip, LOOK_CSS: LOOK_CSS,
+                   splitClip: splitClip, trimClip: trimClip, applyClipSpeed: applyClipSpeed, LOOK_CSS: LOOK_CSS,
                    KeepList: KeepList, subtract: subtract, complement: complement };
   if (typeof module !== "undefined" && module.exports) module.exports = root.VibeCut;
 })(typeof globalThis !== "undefined" ? globalThis : this);
@@ -736,6 +760,8 @@ function render(){
       +'<button class="ghost sm" title="trim start" onclick="trimC('+i+',\'in\')">[+</button>'
       +'<button class="ghost sm" title="trim end" onclick="trimC('+i+',\'out\')">+]</button>'
       +'<button class="ghost sm" title="split" onclick="splitC('+i+')">⤲</button>'
+      +'<select class="sm" title="clip speed" onchange="setClipSpeed('+i+',this.value)">'
+        +[0.5,1,2].map(function(s){return '<option value="'+s+'"'+((c.speed||1)==s?' selected':'')+'>'+s+'x</option>';}).join('')+'</select>'
       +(i>0?'<select class="sm" title="transition into this clip" onchange="setClipTrans('+i+',this.value)">'
         +['','cross-dissolve','wipe-left','wipe-right','slide-left','slide-up','iris','zoom'].map(function(o){return '<option value="'+o+'"'+(c.transition_in===o?' selected':'')+'>'+(o||'cut')+'</option>';}).join('')+'</select>':'')
       +'<button class="ghost sm" onclick="toggleLock('+i+')">'+(c.locked?'🔒':'🔓')+'</button>'
@@ -789,6 +815,9 @@ function addOverlay(){ if(!state.model) return; var txt=$('#ovtext').value.trim(
 function remOverlay(i){ pushUndo(); state.model.titles.splice(i,1); render(); }
 function setClipTrans(i, v){ pushUndo(); state.model.clips[i].transition_in=v;
   $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); }
+function setClipSpeed(i, v){ pushUndo(); state.model.clips[i].speed=parseFloat(v);
+  VibeCut.relayout(state.model); VibeCut.decorate(state.model, state.analysis, state.plan.ops, LIB);
+  VibeCut.applyClipSpeed(state.model); recount(); render(); }
 function audioMix(){
   if(!state.model) return;
   state.model.voice_gain=parseFloat($('#voicegain').value);

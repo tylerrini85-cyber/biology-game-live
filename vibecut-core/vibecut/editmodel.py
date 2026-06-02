@@ -41,6 +41,7 @@ class Clip:
     origin: str = "vibe"     # vibe | manual
     locked: bool = False      # re-vibe skips locked clips (Spec §3)
     transition_in: str = ""   # per-cut overlap style override (xfade family)
+    speed: float = 1.0        # per-clip speed (0.5 = slow-mo, 2 = fast)
     effects: list[Effect] = field(default_factory=list)
 
     @property
@@ -150,6 +151,7 @@ class EditModel:
                          src_out=c["src_out"], timeline_start=c["timeline_start"],
                          origin=c.get("origin", "vibe"), locked=c.get("locked", False),
                          transition_in=c.get("transition_in", ""),
+                         speed=c.get("speed", 1.0),
                          effects=[eff(e) for e in c.get("effects", [])])
                      for c in t.get("clips", [])]
             tracks.append(Track(id=t["id"], kind=t["kind"], clips=clips,

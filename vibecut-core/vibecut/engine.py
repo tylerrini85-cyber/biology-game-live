@@ -261,6 +261,42 @@ def enhance_speech(p: dict, model: EditModel) -> None:
 
 # ---- orchestration ---------------------------------------------------------
 
+def _apply_clip_speed(model: EditModel, report: dict) -> None:
+    """Warp the timeline + captions/zooms by each clip's per-clip speed."""
+    vt = model.video_track()
+    clips = vt.clips
+    if not clips or all(abs((c.speed or 1.0) - 1.0) < 1e-6 for c in clips):
+        return
+    concat_starts = [c.timeline_start for c in clips]
+    durs = [c.src_out - c.src_in for c in clips]
+    new_starts, off = [], 0.0
+    for c, d in zip(clips, durs):
+        new_starts.append(off)
+        off += d / (c.speed or 1.0)
+
+    def warp(t: float) -> float:
+        for i, c in enumerate(clips):
+            cs, d = concat_starts[i], durs[i]
+            if t < cs + d - 1e-6 or i == len(clips) - 1:
+                o = min(max(t - cs, 0.0), d)
+                return new_starts[i] + o / (c.speed or 1.0)
+        return off
+
+    for tr in model.tracks:
+        for i, c in enumerate(tr.clips):
+            if i < len(new_starts):
+                c.timeline_start = new_starts[i]
+    for ev in model.captions.events:
+        ev.start, ev.end = warp(ev.start), warp(ev.end)
+        for w in ev.words:
+            w.t = warp(w.t)
+    for f in vt.filters:
+        if f.type == "transform":
+            for k in f.keyframes.get("scale", []):
+                k.t = warp(k.t)
+    report["ops"].append({"clip_speed": [round(c.speed, 2) for c in clips]})
+
+
 def _apply_overlap(plan: EditPlan, model: EditModel, report: dict) -> None:
     """For xfade-based transitions, shift the whole timeline left by the
     accumulated overlap so cross-fades line up and captions/zooms stay synced."""
@@ -409,6 +445,9 @@ def apply_plan(plan: EditPlan, a: AssetAnalysis,
     if "enhance_speech" in params:
         enhance_speech(params["enhance_speech"], model)
         report["ops"].append({"enhance_speech": True})
+
+    # per-clip speed: warp the timeline (and captions/zooms) by each clip's speed
+    _apply_clip_speed(model, report)
 
     # overlap transitions (xfade): compress the timeline so the cross-fades line
     # up AND captions / zooms stay synced (each cut overlaps by D).

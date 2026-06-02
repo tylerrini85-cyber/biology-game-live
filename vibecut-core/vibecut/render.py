@@ -165,9 +165,16 @@ def _build(model: EditModel, ass_path: str):
     parts: list[str] = []
     n = len(vt.clips)
     for i, c in enumerate(vt.clips):
-        parts.append(f"[0:v]trim=start={c.src_in:.3f}:end={c.src_out:.3f},setpts=PTS-STARTPTS[v{i}]")
+        chain = f"[0:v]trim=start={c.src_in:.3f}:end={c.src_out:.3f},setpts=PTS-STARTPTS"
+        if abs((c.speed or 1.0) - 1.0) > 1e-3:
+            chain += f",setpts=PTS/{c.speed:.4f}"
+        parts.append(chain + f"[v{i}]")
     for i, c in enumerate(at.clips):
-        parts.append(f"[0:a]atrim=start={c.src_in:.3f}:end={c.src_out:.3f},asetpts=PTS-STARTPTS[a{i}]")
+        sp = vt.clips[i].speed if i < len(vt.clips) else 1.0
+        chain = f"[0:a]atrim=start={c.src_in:.3f}:end={c.src_out:.3f},asetpts=PTS-STARTPTS"
+        if abs((sp or 1.0) - 1.0) > 1e-3:
+            chain += "," + ",".join(_atempo_chain(sp))
+        parts.append(chain + f"[a{i}]")
     # detect effects + b-roll first (the music input index depends on b-roll count)
     speed_f = next((f.params.get("factor", 1.0) for f in vt.filters if f.type == "speed"), 1.0)
     reframe = any(f.type == "auto_reframe" for f in vt.filters)

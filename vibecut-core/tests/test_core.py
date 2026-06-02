@@ -299,6 +299,29 @@ class TestCaptionStylingDepth(unittest.TestCase):
         self.assertIn(",Center,,", ass)
 
 
+class TestPerClipSpeed(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+
+    def test_per_clip_speed_warps_timeline_and_renders(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("add captions"), self.a)
+        clips = model.video_track().clips
+        before_total = model.total_duration()
+        clips[1].speed = 0.5  # slow that clip down -> longer
+        # re-warp via the engine helper directly
+        from vibecut.engine import _apply_clip_speed
+        _apply_clip_speed(model, {"ops": []})
+        self.assertGreater(model.total_duration(), before_total)
+        # clips after the slowed one start later (contiguous, monotonic)
+        starts = [c.timeline_start for c in clips]
+        self.assertEqual(starts, sorted(starts))
+        fc = build_ffmpeg_args(model, self.a.source_url, "o.mp4")[
+            build_ffmpeg_args(model, self.a.source_url, "o.mp4").index("-filter_complex") + 1]
+        self.assertIn("setpts=PTS/0.5000", fc)
+        self.assertIn("atempo=0.500", fc)
+
+
 class TestColorAdjust(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)

@@ -145,6 +145,8 @@ function render(){
       +'<button class="ghost sm" title="trim start" onclick="trimC('+i+',\'in\')">[+</button>'
       +'<button class="ghost sm" title="trim end" onclick="trimC('+i+',\'out\')">+]</button>'
       +'<button class="ghost sm" title="split" onclick="splitC('+i+')">⤲</button>'
+      +'<select class="sm" title="clip speed" onchange="setClipSpeed('+i+',this.value)">'
+        +[0.5,1,2].map(function(s){return '<option value="'+s+'"'+((c.speed||1)==s?' selected':'')+'>'+s+'x</option>';}).join('')+'</select>'
       +(i>0?'<select class="sm" title="transition into this clip" onchange="setClipTrans('+i+',this.value)">'
         +['','cross-dissolve','wipe-left','wipe-right','slide-left','slide-up','iris','zoom'].map(function(o){return '<option value="'+o+'"'+(c.transition_in===o?' selected':'')+'>'+(o||'cut')+'</option>';}).join('')+'</select>':'')
       +'<button class="ghost sm" onclick="toggleLock('+i+')">'+(c.locked?'🔒':'🔓')+'</button>'
@@ -198,6 +200,9 @@ function addOverlay(){ if(!state.model) return; var txt=$('#ovtext').value.trim(
 function remOverlay(i){ pushUndo(); state.model.titles.splice(i,1); render(); }
 function setClipTrans(i, v){ pushUndo(); state.model.clips[i].transition_in=v;
   $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); }
+function setClipSpeed(i, v){ pushUndo(); state.model.clips[i].speed=parseFloat(v);
+  VibeCut.relayout(state.model); VibeCut.decorate(state.model, state.analysis, state.plan.ops, LIB);
+  VibeCut.applyClipSpeed(state.model); recount(); render(); }
 function audioMix(){
   if(!state.model) return;
   state.model.voice_gain=parseFloat($('#voicegain').value);
