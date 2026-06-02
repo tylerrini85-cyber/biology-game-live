@@ -194,6 +194,76 @@ class TestReVibe(unittest.TestCase):
                 self.assertFalse(lo <= k.t <= hi, "no auto-zoom should be placed inside a locked clip")
 
 
+class TestIngest(unittest.TestCase):
+    def _make_wav(self, path):
+        import array as _array
+        import math as _math
+        import wave as _wave
+        rate = 8000
+        data = _array.array("h")
+        data.extend([0] * rate)                       # 1s silence
+        for i in range(rate):                          # 1s tone (speech stand-in)
+            data.append(int(10000 * _math.sin(2 * _math.pi * 220 * i / rate)))
+        data.extend([0] * rate)                       # 1s silence
+        with _wave.open(path, "wb") as wf:
+            wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(rate)
+            wf.writeframes(data.tobytes())
+
+    def test_speech_from_wav(self):
+        from vibecut.ingest import speech_from_wav
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "a.wav")
+            self._make_wav(p)
+            speech, dur, rms_at, (floor, peak) = speech_from_wav(p)
+        self.assertAlmostEqual(dur, 3.0, places=1)
+        self.assertTrue(speech, "should detect the loud region")
+        # one detected speech range should cover the middle second
+        self.assertTrue(any(s <= 1.2 and e >= 1.8 for s, e in speech))
+        # silence at t=0.2 quieter than speech at t=1.5
+        self.assertLess(rms_at(0.2), rms_at(1.5))
+
+    def test_whisper_json(self):
+        from vibecut.ingest import words_from_whisper
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "t.json")
+            with open(p, "w") as fh:
+                fh.write('{"segments":[{"words":['
+                         '{"word":"hello","start":0.0,"end":0.5},'
+                         '{"word":"world","start":0.6,"end":1.0}]}]}')
+            words, end = words_from_whisper(p)
+        self.assertEqual([w.text for w in words], ["hello", "world"])
+        self.assertAlmostEqual(end, 1.0)
+
+    def test_srt(self):
+        from vibecut.ingest import words_from_srt
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, "t.srt")
+            with open(p, "w") as fh:
+                fh.write("1\n00:00:00,000 --> 00:00:02,000\nhello there friend\n")
+            words, end = words_from_srt(p)
+        self.assertEqual([w.text for w in words], ["hello", "there", "friend"])
+        self.assertAlmostEqual(end, 2.0)
+
+    def test_analyze_end_to_end_feeds_engine(self):
+        # ingest a synthesized wav + transcript, then run the real engine on it
+        from vibecut.ingest import analyze
+        with tempfile.TemporaryDirectory() as d:
+            wav = os.path.join(d, "a.wav"); self._make_wav(wav)
+            tj = os.path.join(d, "t.json")
+            with open(tj, "w") as fh:
+                fh.write('{"segments":[{"words":['
+                         '{"word":"this","start":1.0,"end":1.3},'
+                         '{"word":"is","start":1.3,"end":1.5},'
+                         '{"word":"important","start":1.5,"end":1.9}]}]}')
+            a = analyze("a1", "/clip.mov", wav=wav, transcript=tj)
+        self.assertGreater(a.duration, 2.9)
+        self.assertEqual(len(a.words), 3)
+        self.assertTrue(all(0.0 <= w.emphasis <= 1.0 for w in a.words))
+        # the engine consumes this real analysis unchanged
+        model, rep = apply_plan(RulesProvider().plan("add captions"), a)
+        self.assertTrue(model.captions.events)
+
+
 class TestPersistence(unittest.TestCase):
     def test_roundtrip(self):
         a = AssetAnalysis.load(SAMPLE)

@@ -47,10 +47,28 @@ python3 -m vibecut.cli "cut it to 15s, punchy, vertical for tiktok" --revibe pro
 Locked clips are never cut, never zoomed, and keep their effects/origin; the
 report shows `protect_locked`. Everything else is regenerated from the new prompt.
 
+### Edit a real file (analysis ingest)
+
+Turn an actual audio track + transcript into the `analysis.json` the editor
+consumes — no ML libraries required (stdlib `wave` + JSON/SRT parsing):
+
+```bash
+# from a Whisper/WhisperX word-level JSON (or an .srt) + the audio .wav
+python3 -m vibecut.ingest --wav clip.wav --transcript clip.json \
+        --source-url clip.mov --out analysis.json
+
+python3 -m vibecut.cli "tighten the dead air, drop fillers, bold captions" \
+        --analysis analysis.json
+```
+
+`ingest` derives speech/silence segments and per-word emphasis from the WAV's
+RMS, and word timestamps from the transcript. In the shipping app this is
+produced by faster-whisper / Silero VAD / PySceneDetect behind the same schema.
+
 ## Test it
 
 ```bash
-python3 -m unittest discover -s tests -v   # 26 tests, ~0.01s
+python3 -m unittest discover -s tests -v   # 30 tests, ~0.03s
 ```
 
 ## Layout
