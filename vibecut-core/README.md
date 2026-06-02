@@ -31,10 +31,26 @@ Useful flags: `--no-zooms`, `--no-captions`, `--encoder {mac,nvidia,intel,amd}`,
 `--analysis path.json`, `--json`. Use `--llm` to route intent through a local
 Ollama model instead of the offline rules parser.
 
+### Re-vibe with lock-to-protect (Spec §3)
+
+The product's signature move — "vibe again, edit it differently" — while
+preserving anything you've locked:
+
+```bash
+# 1) first vibe, lock video clip #2 (a hand-kept moment), save the project
+python3 -m vibecut.cli "clean it up with captions" --lock-clip 2 --save-project proj.json
+
+# 2) re-vibe aggressively — the locked clip survives untouched, the rest is re-edited
+python3 -m vibecut.cli "cut it to 15s, punchy, vertical for tiktok" --revibe proj.json
+```
+
+Locked clips are never cut, never zoomed, and keep their effects/origin; the
+report shows `protect_locked`. Everything else is regenerated from the new prompt.
+
 ## Test it
 
 ```bash
-python3 -m unittest discover -s tests -v   # 22 tests, ~0.01s
+python3 -m unittest discover -s tests -v   # 26 tests, ~0.01s
 ```
 
 ## Layout
@@ -74,3 +90,14 @@ This is only the **edit logic**. In the shipping desktop app (Spec §4–5):
   licensing (keeps the product license-clean / closed-capable).
 - **Untrusted-plan safety** — constrained decoding guarantees structure;
   `validate()` drops unknown ops and clamps every parameter.
+
+## Known refinements (next iterations)
+
+- **Phrase-level trimming.** `target_duration` currently trims the
+  lowest-emphasis *words*, which can look choppy on extreme cuts (e.g. 92s→13s).
+  The planned upgrade selects whole low-emphasis *phrases/sentences* using
+  pause + scene boundaries, for natural, contiguous highlights.
+- **Per-clip captions on lock.** Captions regenerate globally on re-vibe; a
+  locked clip could optionally retain its own caption styling.
+- **Real analysis layer.** Swap the sample JSON for live Whisper + Silero VAD
+  + PySceneDetect output (the next sidecar to build).

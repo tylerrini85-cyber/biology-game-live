@@ -5,6 +5,7 @@ engine and the manual editor write here, and the render engine reads it.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field, asdict
 
 
@@ -113,3 +114,41 @@ class EditModel:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, d: dict) -> "EditModel":
+        prof = Profile(**d.get("profile", {}))
+
+        def eff(e: dict) -> Effect:
+            kf = {k: [Keyframe(**x) for x in v] for k, v in e.get("keyframes", {}).items()}
+            return Effect(type=e["type"], params=e.get("params", {}), keyframes=kf)
+
+        tracks = []
+        for t in d.get("tracks", []):
+            clips = [Clip(id=c["id"], asset_id=c["asset_id"], src_in=c["src_in"],
+                         src_out=c["src_out"], timeline_start=c["timeline_start"],
+                         origin=c.get("origin", "vibe"), locked=c.get("locked", False),
+                         effects=[eff(e) for e in c.get("effects", [])])
+                     for c in t.get("clips", [])]
+            tracks.append(Track(id=t["id"], kind=t["kind"], clips=clips,
+                               filters=[eff(e) for e in t.get("filters", [])]))
+        cap_d = d.get("captions", {})
+        events = [CaptionEvent(start=ev["start"], end=ev["end"],
+                              words=[CaptionWord(**w) for w in ev.get("words", [])])
+                  for ev in cap_d.get("events", [])]
+        captions = Captions(track_id=cap_d.get("track_id", "CAP1"),
+                            style=cap_d.get("style", "minimal"),
+                            position=cap_d.get("position", "lower-mid"),
+                            highlight_color=cap_d.get("highlight_color", "#FFE000"),
+                            events=events)
+        return cls(profile=prof, tracks=tracks, captions=captions,
+                   notes=list(d.get("notes", [])))
+
+    def save(self, path: str) -> None:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(self.to_dict(), fh, indent=2)
+
+    @classmethod
+    def load(cls, path: str) -> "EditModel":
+        with open(path, "r", encoding="utf-8") as fh:
+            return cls.from_dict(json.load(fh))

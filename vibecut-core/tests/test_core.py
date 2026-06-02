@@ -4,11 +4,13 @@ Run:  python -m unittest discover -s tests -v   (from vibecut-core/)
 """
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from vibecut.analysis import AssetAnalysis
+from vibecut.editmodel import EditModel, Effect
 from vibecut.editplan import validate, to_plain
 from vibecut.engine import apply_plan
 from vibecut.ranges import KeepList, subtract, complement
@@ -146,6 +148,66 @@ class TestRender(unittest.TestCase):
         self.assertIn("[Events]", ass)
         self.assertIn("Dialogue:", ass)
         self.assertIn("\\kf", ass)  # karaoke word-highlight timing
+
+
+class TestReVibe(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+        self.model1, _ = apply_plan(RulesProvider().plan("clean it up"), self.a)
+        # lock the middle clip and give it a hand-applied effect
+        self.locked = self.model1.video_track().clips[2]
+        self.locked.locked = True
+        self.locked.origin = "manual"
+        self.locked.effects.append(Effect(type="color_look", params={"look": "warm"}))
+        self.src = (self.locked.src_in, self.locked.src_out)
+
+    def test_locked_clip_survives_aggressive_revibe(self):
+        plan2 = RulesProvider().plan("cut it way down to 12 seconds, super punchy")
+        model2, rep = apply_plan(plan2, self.a, prev_model=self.model1)
+        self.assertTrue(rep["revibe"])
+        matches = [c for c in model2.video_track().clips
+                   if abs(c.src_in - self.src[0]) < 1e-3 and abs(c.src_out - self.src[1]) < 1e-3]
+        self.assertEqual(len(matches), 1, "locked source range must survive re-vibe")
+        self.assertTrue(matches[0].locked)
+        self.assertEqual(matches[0].origin, "manual")
+        self.assertTrue(any(e.type == "color_look" for e in matches[0].effects),
+                        "hand-applied effect must be preserved")
+
+    def test_revibe_still_reedits_unlocked(self):
+        # without the lock, the same aggressive prompt cuts much more
+        plan2 = RulesProvider().plan("cut it way down to 12 seconds")
+        model_free, _ = apply_plan(plan2, self.a)              # fresh, no locks
+        model_lock, _ = apply_plan(plan2, self.a, prev_model=self.model1)
+        self.assertGreaterEqual(model_lock.total_duration(), model_free.total_duration())
+
+    def test_no_zoom_inside_locked(self):
+        plan2 = RulesProvider().plan("make it really punchy with lots of zoom")
+        model2, _ = apply_plan(plan2, self.a, prev_model=self.model1)
+        # locate the surviving locked clip's timeline span in the new model
+        survivor = next(c for c in model2.video_track().clips
+                        if abs(c.src_in - self.src[0]) < 1e-3 and abs(c.src_out - self.src[1]) < 1e-3)
+        lo, hi = survivor.timeline_start, survivor.timeline_end
+        for f in model2.video_track().filters:
+            if f.type != "transform":
+                continue
+            for k in f.keyframes.get("scale", []):
+                self.assertFalse(lo <= k.t <= hi, "no auto-zoom should be placed inside a locked clip")
+
+
+class TestPersistence(unittest.TestCase):
+    def test_roundtrip(self):
+        a = AssetAnalysis.load(SAMPLE)
+        model, _ = apply_plan(RulesProvider().plan("punchy bold captions for tiktok under 50s"), a)
+        model.video_track().clips[1].locked = True
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "project.json")
+            model.save(path)
+            back = EditModel.load(path)
+        self.assertAlmostEqual(back.total_duration(), model.total_duration(), places=3)
+        self.assertEqual(len(back.video_track().clips), len(model.video_track().clips))
+        self.assertTrue(back.video_track().clips[1].locked)
+        self.assertEqual(len(back.captions.events), len(model.captions.events))
+        self.assertEqual(back.profile.width, model.profile.width)
 
 
 if __name__ == "__main__":

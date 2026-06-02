@@ -14,6 +14,7 @@ import json
 import os
 
 from .analysis import AssetAnalysis
+from .editmodel import EditModel
 from .editplan import to_plain
 from .engine import apply_plan
 from .render import build_ass, build_ffmpeg_command
@@ -24,11 +25,25 @@ _DEFAULT_ANALYSIS = os.path.join(_HERE, "..", "samples", "sample_analysis.json")
 
 
 def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
-        encoder: str, toggles: dict, use_llm: bool, model: str) -> dict:
+        encoder: str, toggles: dict, use_llm: bool, model: str,
+        from_project: str | None = None, save_project: str | None = None,
+        lock_clips: list[int] | None = None) -> dict:
     analysis = AssetAnalysis.load(analysis_path)
     provider = make_provider(use_llm=use_llm, model=model) if use_llm else make_provider()
     plan = provider.plan(prompt, toggles)
-    edit_model, report = apply_plan(plan, analysis)
+
+    prev_model = EditModel.load(from_project) if from_project else None
+    edit_model, report = apply_plan(plan, analysis, prev_model=prev_model)
+
+    # optionally lock clips by index (so a later --revibe protects them)
+    for idx in (lock_clips or []):
+        clips = edit_model.video_track().clips
+        if 0 <= idx < len(clips):
+            clips[idx].locked = True
+            clips[idx].origin = "manual"
+
+    if save_project:
+        edit_model.save(save_project)
 
     ass = build_ass(edit_model.captions, edit_model.profile.width, edit_model.profile.height)
     with open(ass_path, "w", encoding="utf-8") as fh:
@@ -51,6 +66,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-captions", action="store_true")
     ap.add_argument("--llm", action="store_true", help="use a local Ollama model")
     ap.add_argument("--model", default="qwen2.5:7b")
+    ap.add_argument("--save-project", metavar="PATH", help="write the edit model JSON")
+    ap.add_argument("--revibe", metavar="PROJECT", help="re-vibe an existing project (protects locked clips)")
+    ap.add_argument("--lock-clip", type=int, action="append", default=[], metavar="N",
+                    help="lock video clip #N before saving (repeatable)")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON only")
     args = ap.parse_args(argv)
 
@@ -61,7 +80,8 @@ def main(argv: list[str] | None = None) -> int:
         toggles["captions"] = False
 
     res = run(args.prompt, args.analysis, args.out, args.ass, args.encoder,
-              toggles, args.llm, args.model)
+              toggles, args.llm, args.model, from_project=args.revibe,
+              save_project=args.save_project, lock_clips=args.lock_clip)
 
     if args.json:
         out = {k: v for k, v in res.items() if k != "edit_model"}

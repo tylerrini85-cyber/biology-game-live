@@ -27,6 +27,53 @@ def subtract(keep: list[Range], cut: Range) -> list[Range]:
     return [(a, b) for a, b in out if b - a > EPS]
 
 
+def subtract_all(rng: Range, holes: list[Range]) -> list[Range]:
+    """Return the parts of a single range left after removing every hole.
+
+    Used to make a cut "respect" protected (locked) regions: we only cut the
+    portions of a span that don't overlap a protected range.
+    """
+    pieces = [rng]
+    for h in holes:
+        nxt: list[Range] = []
+        for p in pieces:
+            nxt.extend(subtract([p], h))
+        pieces = nxt
+    return pieces
+
+
+def bridge_gaps(ranges: list[Range], max_gap: float) -> list[Range]:
+    """Merge kept ranges separated by a gap smaller than `max_gap`.
+
+    Stops micro inter-word pauses from becoming choppy hard cuts. Real silence
+    gaps are longer than `max_gap`, so they stay cut.
+    """
+    if not ranges:
+        return ranges
+    ordered = sorted(ranges)
+    out = [ordered[0]]
+    for a, b in ordered[1:]:
+        pa, pb = out[-1]
+        if a - pb < max_gap:
+            out[-1] = (pa, max(pb, b))
+        else:
+            out.append((a, b))
+    return out
+
+
+def split_at(ranges: list[Range], points: list[float]) -> list[Range]:
+    """Split ranges at any of `points` that fall strictly inside them."""
+    out: list[Range] = []
+    for a, b in ranges:
+        cuts = sorted(p for p in points if a + EPS < p < b - EPS)
+        prev = a
+        for p in cuts:
+            out.append((prev, p))
+            prev = p
+        out.append((prev, b))
+    return out
+
+
 def complement(segments: list[Range], lo: float, hi: float) -> list[Range]:
     """Return the gaps in [lo, hi] not covered by `segments` (e.g. silences)."""
     gaps: list[Range] = []

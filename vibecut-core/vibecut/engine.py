@@ -15,12 +15,13 @@ from .analysis import AssetAnalysis, Word
 from .editmodel import (Captions, CaptionEvent, CaptionWord, Clip, Effect,
                         EditModel, Keyframe, Profile, Track)
 from .editplan import EditPlan
-from .ranges import KeepList, complement
+from .ranges import KeepList, bridge_gaps, complement, split_at, subtract_all
 
 _ASPECT_DIMS = {"16:9": (1920, 1080), "9:16": (1080, 1920),
                 "1:1": (1080, 1080), "4:5": (1080, 1350)}
 _FREQ_THRESH = {"high": 0.55, "medium": 0.7, "low": 0.82}
 MIN_SEGMENT_S = 0.30  # kept ranges shorter than this are cut artifacts
+BRIDGE_GAP_S = 0.25   # merge kept ranges separated by less than this
 
 
 def _norm(text: str) -> str:
@@ -28,34 +29,48 @@ def _norm(text: str) -> str:
 
 
 # ---- cut ops: mutate the KeepList -----------------------------------------
+# `protect` is a list of source ranges that must never be cut (locked clips,
+# Spec §3). Cuts are clipped around them so locked content is untouched.
 
-def cut_silence(p: dict, a: AssetAnalysis, keep: KeepList) -> int:
+def _safe_cut(keep: KeepList, rng: tuple, protect: list[tuple]) -> bool:
+    pieces = subtract_all(rng, protect) if protect else [rng]
+    did = False
+    for piece in pieces:
+        keep.cut(piece)
+        did = True
+    return did
+
+
+def _protected(t: float, protect: list[tuple]) -> bool:
+    return any(s <= t <= e for s, e in protect)
+
+
+def cut_silence(p: dict, a: AssetAnalysis, keep: KeepList, protect: list[tuple]) -> int:
     cuts = 0
     for s, e in complement(a.speech, 0.0, a.duration):
         if (e - s) > p["min_duration_s"]:
             cs, ce = s + p["padding_s"], e - p["padding_s"]
-            if ce > cs:
-                keep.cut((cs, ce))
+            if ce > cs and _safe_cut(keep, (cs, ce), protect):
                 cuts += 1
     return cuts
 
 
-def remove_fillers(p: dict, a: AssetAnalysis, keep: KeepList) -> int:
+def remove_fillers(p: dict, a: AssetAnalysis, keep: KeepList, protect: list[tuple]) -> int:
     lex = {_norm(w) for w in p["lexicon"]}
     cuts = 0
     for w in a.words:
-        if _norm(w.text) in lex and keep.contains(w.mid):
+        if _norm(w.text) in lex and keep.contains(w.mid) and not _protected(w.mid, protect):
             keep.cut((w.start, w.end))
             cuts += 1
     return cuts
 
 
-def target_duration(p: dict, a: AssetAnalysis, keep: KeepList) -> dict:
+def target_duration(p: dict, a: AssetAnalysis, keep: KeepList, protect: list[tuple]) -> dict:
     """Ladder trim: drop lowest-emphasis surviving words until under target."""
     target = p["max_seconds"]
     if keep.total() <= target:
         return {"trimmed_words": 0, "met": True}
-    survivors = [w for w in a.words if keep.contains(w.mid)]
+    survivors = [w for w in a.words if keep.contains(w.mid) and not _protected(w.mid, protect)]
     survivors.sort(key=lambda w: (w.emphasis, w.dur))
     trimmed = 0
     for w in survivors:
@@ -98,7 +113,9 @@ def add_captions(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel) ->
     return len(events)
 
 
-def punch_in(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel) -> int:
+def punch_in(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel,
+             protect: list[tuple] | None = None) -> int:
+    protect = protect or []
     thresh = _FREQ_THRESH[p["frequency"]]
     gap = p["min_gap_s"]
     scale = p["max_scale"]
@@ -106,7 +123,7 @@ def punch_in(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel) -> int
     last = -1e9
     count = 0
     for w in _surviving_words(a, keep):
-        if w.emphasis < thresh:
+        if w.emphasis < thresh or _protected(w.mid, protect):
             continue
         tt = keep.map_to_timeline(w.start)
         if tt is None or tt - last < gap:
@@ -149,20 +166,38 @@ def enhance_speech(p: dict, model: EditModel) -> None:
 
 # ---- orchestration ---------------------------------------------------------
 
-def apply_plan(plan: EditPlan, a: AssetAnalysis) -> tuple[EditModel, dict]:
-    """Run a validated plan against cached analysis -> (EditModel, report)."""
+def _locked_specs(prev: EditModel | None) -> list[Clip]:
+    if prev is None:
+        return []
+    return [c for c in prev.video_track().clips if c.locked]
+
+
+def apply_plan(plan: EditPlan, a: AssetAnalysis,
+               prev_model: EditModel | None = None) -> tuple[EditModel, dict]:
+    """Run a validated plan against cached analysis -> (EditModel, report).
+
+    If `prev_model` is given (a RE-VIBE), source ranges covered by *locked*
+    clips are protected: never cut, never zoomed, and their effects + origin
+    are carried over. Everything else is freshly re-edited per the new plan.
+    """
     keep = KeepList.whole(a.duration)
     model = EditModel()
-    report: dict = {"original_s": round(a.duration, 2), "ops": []}
+    report: dict = {"original_s": round(a.duration, 2), "ops": [], "revibe": prev_model is not None}
+
+    locked = _locked_specs(prev_model)
+    protect = [(c.src_in, c.src_out) for c in locked]
+    if locked:
+        report["ops"].append({"protect_locked": {"clips": len(locked),
+                                                 "seconds": round(sum(e - s for s, e in protect), 2)}})
 
     params = {o.op: o.params for o in plan.ops}
 
     # 1) cut ops first (order matters: silence -> fillers -> target)
     if "cut_silence" in params:
-        n = cut_silence(params["cut_silence"], a, keep)
+        n = cut_silence(params["cut_silence"], a, keep, protect)
         report["ops"].append({"cut_silence": {"silences_cut": n}})
     if "remove_fillers" in params:
-        n = remove_fillers(params["remove_fillers"], a, keep)
+        n = remove_fillers(params["remove_fillers"], a, keep, protect)
         report["ops"].append({"remove_fillers": {"fillers_cut": n}})
 
     # target duration can come from a dedicated op or the plan-level field
@@ -172,24 +207,39 @@ def apply_plan(plan: EditPlan, a: AssetAnalysis) -> tuple[EditModel, dict]:
     elif plan.target_duration_s is not None:
         target = plan.target_duration_s
     if target is not None:
-        res = target_duration({"max_seconds": target}, a, keep)
+        res = target_duration({"max_seconds": target}, a, keep, protect)
         report["ops"].append({"target_duration": {"target_s": round(target, 2), **res}})
 
-    # drop sub-perceptual slivers left behind by padding / adjacent cuts
+    # smooth out choppiness: bridge micro inter-word gaps so kept words stay
+    # contiguous (real silences are longer and stay cut), then drop slivers.
+    # locked-boundary exactness is restored by split_at() below.
+    keep.ranges = bridge_gaps(keep.ranges, BRIDGE_GAP_S)
     before = len(keep.ranges)
-    keep.ranges = [(s, e) for s, e in keep.ranges if (e - s) >= MIN_SEGMENT_S]
+    keep.ranges = [(s, e) for s, e in keep.ranges
+                   if (e - s) >= MIN_SEGMENT_S or _protected((s + e) / 2, protect)]
     if before - len(keep.ranges):
         report["ops"].append({"cleanup": {"slivers_dropped": before - len(keep.ranges)}})
+
+    # split kept ranges at locked boundaries so each locked clip is its own segment
+    if protect:
+        keep.ranges = split_at(keep.ranges, [x for r in protect for x in r])
 
     # 2) build the timeline from the final keep list (one clip per kept range)
     vt = model.video_track()
     at = model.audio_track()
+    locked_by_range = {(round(c.src_in, 3), round(c.src_out, 3)): c for c in locked}
     off = 0.0
     for i, (s, e) in enumerate(keep.ranges):
-        vt.clips.append(Clip(id=f"v{i}", asset_id=a.asset_id, src_in=s, src_out=e,
-                             timeline_start=off, origin="vibe"))
+        spec = locked_by_range.get((round(s, 3), round(e, 3)))
+        vclip = Clip(id=f"v{i}", asset_id=a.asset_id, src_in=s, src_out=e,
+                     timeline_start=off, origin="vibe")
+        if spec is not None:  # carry over the locked hand-edit
+            vclip.locked = True
+            vclip.origin = spec.origin
+            vclip.effects = spec.effects
+        vt.clips.append(vclip)
         at.clips.append(Clip(id=f"a{i}", asset_id=a.asset_id, src_in=s, src_out=e,
-                             timeline_start=off, origin="vibe"))
+                             timeline_start=off, origin=vclip.origin, locked=vclip.locked))
         off += e - s
 
     # 3) build ops that need the timeline map
@@ -197,7 +247,7 @@ def apply_plan(plan: EditPlan, a: AssetAnalysis) -> tuple[EditModel, dict]:
         n = add_captions(params["add_captions"], a, keep, model)
         report["ops"].append({"add_captions": {"events": n}})
     if "punch_in" in params:
-        n = punch_in(params["punch_in"], a, keep, model)
+        n = punch_in(params["punch_in"], a, keep, model, protect)
         report["ops"].append({"punch_in": {"zooms": n}})
     if "auto_reframe" in params:
         auto_reframe(params["auto_reframe"], a, model)
