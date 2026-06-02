@@ -66,10 +66,24 @@ python3 -m vibecut.cli "tighten the dead air, drop fillers, bold captions" \
 RMS, and word timestamps from the transcript. In the shipping app this is
 produced by faster-whisper / Silero VAD / PySceneDetect behind the same schema.
 
+### Export a real MP4
+
+With **FFmpeg installed** and a real source video, add `--render` to actually
+write the cut + reframed + captioned file (not just print the command):
+
+```bash
+python3 -m vibecut.cli "punchy under 45s, vertical for tiktok, bold captions" \
+        --analysis analysis.json --render my_edit.mp4
+```
+
+The deterministic export (cuts, vertical reframe, captions, loudness) is done
+by FFmpeg with **hardware encoders only**. Time-varying effects (punch-in zoom,
+b-roll overlays) are baked in by the desktop app's GPU compositor.
+
 ## Test it
 
 ```bash
-python3 -m unittest discover -s tests -v   # 37 tests, ~0.04s
+python3 -m unittest discover -s tests -v   # 40 tests, ~0.04s
 ```
 
 Every run also prints an **ASCII timeline** of the original footage so you can

@@ -17,7 +17,7 @@ from .analysis import AssetAnalysis
 from .editmodel import EditModel
 from .editplan import to_plain
 from .engine import apply_plan
-from .render import build_ass, build_ffmpeg_command
+from .render import build_ass, build_ffmpeg_command, render_to_file
 from .report import render_html
 from .timeline import render as render_timeline
 from .vibe import make_provider
@@ -30,7 +30,7 @@ def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
         encoder: str, toggles: dict, use_llm: bool, model: str,
         from_project: str | None = None, save_project: str | None = None,
         lock_clips: list[int] | None = None, html_path: str | None = None,
-        media_library_path: str | None = None) -> dict:
+        media_library_path: str | None = None, render_path: str | None = None) -> dict:
     analysis = AssetAnalysis.load(analysis_path)
     provider = make_provider(use_llm=use_llm, model=model) if use_llm else make_provider()
     plan = provider.plan(prompt, toggles)
@@ -59,13 +59,17 @@ def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
         fh.write(ass)
     cmd = build_ffmpeg_command(edit_model, analysis.source_url, out_path,
                                ass_path=ass_path, encoder=encoder)
+    render_result = None
+    if render_path:
+        render_result = render_to_file(edit_model, analysis.source_url, render_path,
+                                       ass_path=ass_path, encoder=encoder)
     if html_path:
         with open(html_path, "w", encoding="utf-8") as fh:
             fh.write(render_html(prompt, edit_model, report, analysis.duration, cmd))
     return {"provider": provider.name, "plan": to_plain(plan),
             "report": report, "ffmpeg": cmd, "ass_path": ass_path,
             "edit_model": edit_model, "original_s": analysis.duration,
-            "html_path": html_path}
+            "html_path": html_path, "render_result": render_result}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="lock video clip #N before saving (repeatable)")
     ap.add_argument("--html", metavar="PATH", help="write a visual HTML edit report")
     ap.add_argument("--media-library", metavar="PATH", help="JSON of your own clips for b-roll suggestions")
+    ap.add_argument("--render", metavar="OUT.mp4", help="actually run FFmpeg to export the MP4 (needs ffmpeg + real source)")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON only")
     args = ap.parse_args(argv)
 
@@ -97,7 +102,8 @@ def main(argv: list[str] | None = None) -> int:
     res = run(args.prompt, args.analysis, args.out, args.ass, args.encoder,
               toggles, args.llm, args.model, from_project=args.revibe,
               save_project=args.save_project, lock_clips=args.lock_clip,
-              html_path=args.html, media_library_path=args.media_library)
+              html_path=args.html, media_library_path=args.media_library,
+              render_path=args.render)
 
     if args.json:
         out = {k: v for k, v in res.items() if k != "edit_model"}
@@ -123,8 +129,12 @@ def main(argv: list[str] | None = None) -> int:
     print("  TIMELINE (original footage: kept vs cut):")
     print(render_timeline(res["edit_model"], res["original_s"]))
     print("  " + "-" * 58)
-    print("  FFMPEG (deterministic export):\n")
+    print("  FFMPEG (export command):\n")
     print("  " + res["ffmpeg"].replace("\n", "\n  "))
+    if res.get("render_result") is not None:
+        ok, msg = res["render_result"]
+        print("  " + "-" * 58)
+        print(f"  EXPORT: {'wrote ' + msg if ok else 'not rendered - ' + msg}")
     print()
     return 0
 

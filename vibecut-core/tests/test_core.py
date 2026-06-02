@@ -225,6 +225,28 @@ class TestRender(unittest.TestCase):
         self.assertIn("Dialogue:", ass)
         self.assertIn("\\kf", ass)  # karaoke word-highlight timing
 
+    def test_reframe_bakes_crop_and_scale(self):
+        from vibecut.render import build_ffmpeg_command
+        # vertical request -> the export actually crops + scales, not just a note
+        model, _ = apply_plan(RulesProvider().plan("vertical for tiktok"), self.a)
+        cmd = build_ffmpeg_command(model, self.a.source_url, "out.mp4")
+        self.assertIn("crop=", cmd)
+        self.assertIn("scale=1080:1920", cmd)
+
+    def test_ffmpeg_args_are_argv_list(self):
+        from vibecut.render import build_ffmpeg_args
+        args = build_ffmpeg_args(self.model, self.a.source_url, "out.mp4", encoder="nvidia")
+        self.assertEqual(args[0], "ffmpeg")
+        self.assertIn("-filter_complex", args)
+        self.assertIn("[vout]", args)
+        self.assertIn("h264_nvenc", args)
+
+    def test_render_to_file_reports_missing_ffmpeg_or_source(self):
+        from vibecut.render import render_to_file
+        ok, msg = render_to_file(self.model, "/no/such/clip.mov", "out.mp4")
+        self.assertFalse(ok)
+        self.assertTrue("FFmpeg" in msg or "not found" in msg)
+
 
 class TestReVibe(unittest.TestCase):
     def setUp(self):
