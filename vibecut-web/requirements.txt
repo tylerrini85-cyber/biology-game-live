@@ -1,0 +1,2 @@
+# VibeCut Studio static server uses only the Python standard library.
+# (This file tells Railway/Nixpacks to use the Python builder.)
