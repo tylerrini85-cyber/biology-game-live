@@ -149,7 +149,8 @@ def color_look(p: dict, model: EditModel) -> None:
 
 def transitions(p: dict, model: EditModel) -> None:
     model.video_track().filters.append(
-        Effect(type="transition", params={"style": p["style"], "duration": p["duration"]}))
+        Effect(type="transition", params={"style": p["style"], "duration": p["duration"],
+                                          "audio": p.get("audio", "constant-power")}))
 
 
 def speed(p: dict, model: EditModel) -> None:

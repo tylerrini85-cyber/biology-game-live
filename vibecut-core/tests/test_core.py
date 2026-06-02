@@ -200,6 +200,25 @@ class TestColorAndTransitions(unittest.TestCase):
         self.assertIn("fade=t=in", fc)
         self.assertIn("fade=t=out", fc)
 
+    def test_dip_to_black_adds_per_cut_dips(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("dip to black transitions"), self.a)
+        self.assertEqual(next(o for o in RulesProvider().plan("dip to black").ops if o.op == "transitions").params["style"], "dip-to-black")
+        fc = build_ffmpeg_args(model, self.a.source_url, "o.mp4")[
+            build_ffmpeg_args(model, self.a.source_url, "o.mp4").index("-filter_complex") + 1]
+        # ends (2) + a dip pair per internal cut -> more than 2 fade ops
+        self.assertGreater(fc.count("fade=t="), 2)
+        self.assertIn("c=black", fc)
+
+    def test_dip_to_white_and_audio_curve(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("dip to white, exponential audio fade"), self.a)
+        fc = build_ffmpeg_args(model, self.a.source_url, "o.mp4")[
+            build_ffmpeg_args(model, self.a.source_url, "o.mp4").index("-filter_complex") + 1]
+        self.assertIn("c=white", fc)
+        self.assertIn("afade=t=in", fc)
+        self.assertIn("curve=exp", fc)  # exponential
+
     def test_caption_uppercase_and_style(self):
         model, _ = apply_plan(RulesProvider().plan("neon uppercase captions"), self.a)
         self.assertEqual(model.captions.style, "neon")

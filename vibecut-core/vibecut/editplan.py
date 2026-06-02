@@ -16,7 +16,8 @@ from dataclasses import dataclass, field
 ASPECTS = ["16:9", "9:16", "1:1", "4:5"]
 FREQ = ["low", "medium", "high"]
 LOOKS = ["none", "warm", "cool", "vivid", "bw", "film", "bright"]
-TRANSITIONS = ["none", "fade", "dissolve"]
+TRANSITIONS = ["none", "fade", "dip-to-black", "dip-to-white"]
+AUDIO_CURVES = ["constant-power", "constant-gain", "exponential"]
 
 # Allowed operations and their parameter spec: name -> {param: (default, lo, hi)}
 # (string/enum params handled separately in _clamp).
@@ -44,7 +45,8 @@ OP_SPEC: dict[str, dict] = {
     "enhance_speech":    {"strength": (0.8, 0.0, 1.0)},
     "suggest_broll":     {"density": ("medium", None, None), "query": ("auto", None, None)},
     "color_look":        {"look": ("warm", None, None), "amount": (0.8, 0.0, 1.0)},
-    "transitions":       {"style": ("fade", None, None), "duration": (0.4, 0.1, 2.0)},
+    "transitions":       {"style": ("fade", None, None), "duration": (0.4, 0.1, 2.0),
+                          "audio": ("constant-power", None, None)},
     "speed":             {"factor": (1.0, 0.25, 4.0)},
     "add_title":         {"text": ("", None, None), "duration": (2.5, 0.5, 10.0),
                           "kind": ("intro", None, None)},
@@ -101,6 +103,8 @@ def _clamp(op: str, params: dict) -> dict:
         out["look"] = "warm"
     if op == "transitions" and out["style"] not in TRANSITIONS:
         out["style"] = "fade"
+    if op == "transitions" and out["audio"] not in AUDIO_CURVES:
+        out["audio"] = "constant-power"
     if op == "add_title" and out["kind"] not in TITLE_KINDS:
         out["kind"] = "intro"
     return out

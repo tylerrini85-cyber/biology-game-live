@@ -98,11 +98,17 @@ class RulesProvider:
         elif "bright" in t:
             add("color_look", look="bright")
 
-        # ---- transitions
-        if "crossfade" in t or "cross dissolve" in t or "dissolve" in t:
-            ops.setdefault("transitions", {})["style"] = "dissolve"
-        elif "fade" in t or "cinematic" in t:
+        # ---- transitions (fade family)
+        if "dip to black" in t or "dip-to-black" in t:
+            ops.setdefault("transitions", {})["style"] = "dip-to-black"
+        elif "dip to white" in t or "dip-to-white" in t:
+            ops.setdefault("transitions", {})["style"] = "dip-to-white"
+        elif "fade" in t or "cinematic" in t or "crossfade" in t or "dissolve" in t:
             ops.setdefault("transitions", {})["style"] = "fade"
+        if "constant gain" in t:
+            ops.setdefault("transitions", {})["audio"] = "constant-gain"
+        elif "exponential" in t:
+            ops.setdefault("transitions", {})["audio"] = "exponential"
 
         # ---- caption tweaks
         if "uppercase" in t or "all caps" in t or "all-caps" in t:

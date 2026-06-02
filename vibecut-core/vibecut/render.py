@@ -32,6 +32,9 @@ LOOK_FILTERS = {
     "none": "",
 }
 
+# Adobe audio crossfade curve -> ffmpeg afade/acrossfade curve
+AUDIO_FF = {"constant-power": "qsin", "constant-gain": "tri", "exponential": "exp"}
+
 # vendor -> hardware H.264 encoder (Spec §11: hardware encoders only)
 HW_ENCODERS = {
     "mac": "h264_videotoolbox",
@@ -168,6 +171,14 @@ def _build(model: EditModel, ass_path: str):
             afilters.append("afftdn=nf=-25,highpass=f=90,lowpass=f=12000")
     if abs(float(speed_f) - 1.0) > 1e-3:
         afilters += _atempo_chain(float(speed_f))
+    # audio crossfade curve at start/end (Adobe: Constant Power / Gain / Exponential)
+    tr0 = next((f for f in vt.filters if f.type == "transition"), None)
+    if tr0 and tr0.params.get("style") in ("fade", "dip-to-black", "dip-to-white"):
+        total_a = sum(c.src_out - c.src_in for c in vt.clips)
+        d = float(tr0.params.get("duration", 0.4))
+        curve = AUDIO_FF.get(tr0.params.get("audio", "constant-power"), "qsin")
+        afilters.append(f"afade=t=in:st=0:d={d:.3f}:curve={curve}")
+        afilters.append(f"afade=t=out:st={max(0.0, total_a - d):.3f}:d={d:.3f}:curve={curve}")
     parts.append("[ac]" + ",".join(afilters or ["anull"]) + "[voicepre]")
 
     # background music (+ optional sidechain ducking under the voice)
@@ -222,13 +233,23 @@ def _build(model: EditModel, ass_path: str):
     parts.append(f"[{vlabel}]ass={ass_path}[vcap]")
     vlabel = "vcap"
 
-    # fade / dissolve transition (fade in + out around the whole edit)
+    # fade family: fade in/out + (for dip styles) a dip-to-black/white at each cut
     tr = next((f for f in vt.filters if f.type == "transition"), None)
-    if tr and tr.params.get("style") in ("fade", "dissolve"):
+    if tr and tr.params.get("style") in ("fade", "dip-to-black", "dip-to-white"):
+        style = tr.params["style"]
+        color = "white" if style == "dip-to-white" else "black"
         total = sum(c.src_out - c.src_in for c in vt.clips)
         d = float(tr.params.get("duration", 0.4))
-        st = max(0.0, total - d)
-        parts.append(f"[{vlabel}]fade=t=in:st=0:d={d:.3f},fade=t=out:st={st:.3f}:d={d:.3f}[vtr]")
+        fades = [f"fade=t=in:st=0:d={d:.3f}:c={color}",
+                 f"fade=t=out:st={max(0.0, total - d):.3f}:d={d:.3f}:c={color}"]
+        if style in ("dip-to-black", "dip-to-white"):
+            dh = min(d, 0.3) / 2.0  # short dip so cuts don't drag
+            off = 0.0
+            for c in vt.clips[:-1]:
+                off += c.src_out - c.src_in  # cut boundary on the concat timeline
+                fades.append(f"fade=t=out:st={max(0.0, off - dh):.3f}:d={dh:.3f}:c={color}")
+                fades.append(f"fade=t=in:st={off:.3f}:d={dh:.3f}:c={color}")
+        parts.append(f"[{vlabel}]{','.join(fades)}[vtr]")
         vlabel = "vtr"
 
     # speed / time-remap (applied last so captions + fades remap with the video)
