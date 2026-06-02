@@ -35,6 +35,14 @@ LOOK_FILTERS = {
 # Adobe audio crossfade curve -> ffmpeg afade/acrossfade curve
 AUDIO_FF = {"constant-power": "qsin", "constant-gain": "tri", "exponential": "exp"}
 
+# Adobe overlap transitions -> ffmpeg xfade transition name
+XFADE_MAP = {
+    "cross-dissolve": "dissolve", "film-dissolve": "dissolve", "additive-dissolve": "dissolve",
+    "wipe-left": "wipeleft", "wipe-right": "wiperight", "wipe-up": "wipeup", "wipe-down": "wipedown",
+    "slide-left": "slideleft", "slide-right": "slideright", "slide-up": "slideup", "slide-down": "slidedown",
+    "iris": "circleopen", "zoom": "zoomin", "pixelize": "pixelize", "radial": "radial",
+}
+
 # vendor -> hardware H.264 encoder (Spec §11: hardware encoders only)
 HW_ENCODERS = {
     "mac": "h264_videotoolbox",
@@ -149,8 +157,6 @@ def _build(model: EditModel, ass_path: str):
         parts.append(f"[0:v]trim=start={c.src_in:.3f}:end={c.src_out:.3f},setpts=PTS-STARTPTS[v{i}]")
     for i, c in enumerate(at.clips):
         parts.append(f"[0:a]atrim=start={c.src_in:.3f}:end={c.src_out:.3f},asetpts=PTS-STARTPTS[a{i}]")
-    parts.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[vc][ac]")
-
     # detect effects + b-roll first (the music input index depends on b-roll count)
     speed_f = next((f.params.get("factor", 1.0) for f in vt.filters if f.type == "speed"), 1.0)
     reframe = any(f.type == "auto_reframe" for f in vt.filters)
@@ -159,6 +165,36 @@ def _build(model: EditModel, ass_path: str):
     existing = [c for c in broll_clips if os.path.exists(_broll_url(c))]
     skipped = len(broll_clips) - len(existing)
     effects = reframe or zoom or existing
+    tr = next((f for f in vt.filters if f.type == "transition"), None)
+    style = tr.params.get("style") if tr else "none"
+    overlap = (style in XFADE_MAP) and n > 1
+    D = float(tr.params.get("overlap", tr.params.get("duration", 0.4))) if overlap else 0.0
+
+    # ---- video assembly: xfade chain (overlap transitions) or plain concat ----
+    if overlap:
+        crop = (f"crop='min(iw,ih*{W}/{H})':'min(ih,iw*{H}/{W})'," if reframe else "")
+        for i in range(n):
+            parts.append(f"[v{i}]{crop}scale={W}:{H},setsar=1,fps=30,format=yuv420p[vn{i}]")
+        xf, prev = XFADE_MAP[style], "vn0"
+        for i in range(1, n):
+            parts.append(f"[{prev}][vn{i}]xfade=transition={xf}:duration={D:.3f}:"
+                         f"offset={vt.clips[i].timeline_start:.3f}[vx{i}]")
+            prev = f"vx{i}"
+        vlabel = prev
+    else:
+        parts.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[vc][ac]")
+        vlabel = "vc"
+
+    # ---- audio assembly: acrossfade chain (overlap) or the concat's [ac] ----
+    if overlap:
+        curve = AUDIO_FF.get(tr.params.get("audio", "constant-power"), "qsin")
+        aprev = "a0"
+        for i in range(1, n):
+            parts.append(f"[{aprev}][a{i}]acrossfade=d={D:.3f}:c1={curve}:c2={curve}[ax{i}]")
+            aprev = f"ax{i}"
+        audio_src = aprev
+    else:
+        audio_src = "ac"
 
     # voice chain
     afilters = []
@@ -171,15 +207,14 @@ def _build(model: EditModel, ass_path: str):
             afilters.append("afftdn=nf=-25,highpass=f=90,lowpass=f=12000")
     if abs(float(speed_f) - 1.0) > 1e-3:
         afilters += _atempo_chain(float(speed_f))
-    # audio crossfade curve at start/end (Adobe: Constant Power / Gain / Exponential)
-    tr0 = next((f for f in vt.filters if f.type == "transition"), None)
-    if tr0 and tr0.params.get("style") in ("fade", "dip-to-black", "dip-to-white"):
+    # fade-family audio crossfade curve at start/end (overlap uses acrossfade instead)
+    if not overlap and tr and style in ("fade", "dip-to-black", "dip-to-white"):
         total_a = sum(c.src_out - c.src_in for c in vt.clips)
-        d = float(tr0.params.get("duration", 0.4))
-        curve = AUDIO_FF.get(tr0.params.get("audio", "constant-power"), "qsin")
+        d = float(tr.params.get("duration", 0.4))
+        curve = AUDIO_FF.get(tr.params.get("audio", "constant-power"), "qsin")
         afilters.append(f"afade=t=in:st=0:d={d:.3f}:curve={curve}")
         afilters.append(f"afade=t=out:st={max(0.0, total_a - d):.3f}:d={d:.3f}:curve={curve}")
-    parts.append("[ac]" + ",".join(afilters or ["anull"]) + "[voicepre]")
+    parts.append(f"[{audio_src}]" + ",".join(afilters or ["anull"]) + "[voicepre]")
 
     # background music (+ optional sidechain ducking under the voice)
     music_path = None
@@ -197,12 +232,11 @@ def _build(model: EditModel, ass_path: str):
     else:
         parts.append("[voicepre]anull[aout]")
 
-    vlabel = "vc"
-    if reframe:  # center-crop to target aspect, normalize to WxH
+    if not overlap and reframe:  # center-crop to target aspect, normalize to WxH
         parts.append(f"[vc]crop='min(iw,ih*{W}/{H})':'min(ih,iw*{H}/{W})',"
                      f"scale={W}:{H},setsar=1[vr]")
         vlabel = "vr"
-    elif effects:  # normalize resolution so zoom/overlays line up
+    elif not overlap and effects:  # normalize resolution so zoom/overlays line up
         parts.append(f"[vc]scale={W}:{H},setsar=1[vr]")
         vlabel = "vr"
 
@@ -234,9 +268,7 @@ def _build(model: EditModel, ass_path: str):
     vlabel = "vcap"
 
     # fade family: fade in/out + (for dip styles) a dip-to-black/white at each cut
-    tr = next((f for f in vt.filters if f.type == "transition"), None)
-    if tr and tr.params.get("style") in ("fade", "dip-to-black", "dip-to-white"):
-        style = tr.params["style"]
+    if not overlap and tr and style in ("fade", "dip-to-black", "dip-to-white"):
         color = "white" if style == "dip-to-white" else "black"
         total = sum(c.src_out - c.src_in for c in vt.clips)
         d = float(tr.params.get("duration", 0.4))

@@ -278,6 +278,42 @@ class TestSpeedTitleAudio(unittest.TestCase):
         self.assertIn("afftdn", args[args.index("-filter_complex") + 1])
 
 
+class TestOverlapTransitions(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+
+    def test_vibe_detects_cross_dissolve(self):
+        plan = RulesProvider().plan("cross dissolve between clips")
+        self.assertEqual(next(o for o in plan.ops if o.op == "transitions").params["style"], "cross-dissolve")
+
+    def test_overlap_compresses_timeline_and_syncs_captions(self):
+        from vibecut.editplan import Op
+        plan = RulesProvider().plan("add captions")
+        plan.ops.append(Op("transitions", {"style": "cross-dissolve", "duration": 0.3, "audio": "constant-power"}))
+        model, rep = apply_plan(plan, self.a)
+        # overlapped total is shorter than the plain concat sum of clip durations
+        concat_total = sum(c.src_out - c.src_in for c in model.video_track().clips)
+        self.assertLess(model.total_duration(), concat_total - 1e-3)
+        # every caption word still lands within some kept clip's (overlapped) span
+        clips = model.video_track().clips
+        def covered(t):
+            return any(c.timeline_start - 0.05 <= t <= c.timeline_end + 0.05 for c in clips)
+        self.assertTrue(all(covered(w.t) for ev in model.captions.events for w in ev.words))
+        self.assertTrue(any("transition_overlap_s" in o for o in rep["ops"]))
+
+    def test_xfade_baked_into_export(self):
+        from vibecut.editplan import Op
+        from vibecut.render import build_ffmpeg_args
+        plan = RulesProvider().plan("add captions")
+        plan.ops.append(Op("transitions", {"style": "wipe-left", "duration": 0.3, "audio": "constant-power"}))
+        model, _ = apply_plan(plan, self.a)
+        fc = build_ffmpeg_args(model, self.a.source_url, "o.mp4")[
+            build_ffmpeg_args(model, self.a.source_url, "o.mp4").index("-filter_complex") + 1]
+        self.assertIn("xfade=transition=wipeleft", fc)
+        self.assertIn("acrossfade=", fc)
+        self.assertNotIn("concat=", fc)  # overlap mode uses xfade, not concat
+
+
 class TestBroll(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)

@@ -14,7 +14,7 @@ import re
 from .analysis import AssetAnalysis, Word
 from .editmodel import (Captions, CaptionEvent, CaptionWord, Clip, Effect,
                         EditModel, Keyframe, Profile, Track)
-from .editplan import EditPlan
+from .editplan import EditPlan, OVERLAP_TRANSITIONS
 from .ranges import KeepList, bridge_gaps, complement, split_at, subtract_all
 
 _ASPECT_DIMS = {"16:9": (1920, 1080), "9:16": (1080, 1920),
@@ -261,6 +261,40 @@ def enhance_speech(p: dict, model: EditModel) -> None:
 
 # ---- orchestration ---------------------------------------------------------
 
+def _apply_overlap(plan: EditPlan, model: EditModel, report: dict) -> None:
+    """For xfade-based transitions, shift the whole timeline left by the
+    accumulated overlap so cross-fades line up and captions/zooms stay synced."""
+    tparams = next((o.params for o in plan.ops if o.op == "transitions"), None)
+    vt = model.video_track()
+    if not tparams or tparams.get("style") not in OVERLAP_TRANSITIONS or len(vt.clips) < 2:
+        return
+    durs = [c.src_out - c.src_in for c in vt.clips]
+    D = min(float(tparams.get("duration", 0.4)), 0.5 * min(durs))
+    boundaries, acc = [], 0.0
+    for d in durs[:-1]:
+        acc += d
+        boundaries.append(acc)
+
+    def shift(t: float) -> float:
+        cb = sum(1 for b in boundaries if b <= t + 1e-6)
+        return max(0.0, t - cb * D)
+
+    for tr in model.tracks:
+        for c in tr.clips:
+            c.timeline_start = shift(c.timeline_start)
+    for ev in model.captions.events:
+        ev.start, ev.end = shift(ev.start), shift(ev.end)
+        for w in ev.words:
+            w.t = shift(w.t)
+    for f in vt.filters:
+        if f.type == "transform":
+            for k in f.keyframes.get("scale", []):
+                k.t = shift(k.t)
+        if f.type == "transition":
+            f.params["overlap"] = round(D, 4)
+    report["ops"].append({"transition_overlap_s": round(D, 3)})
+
+
 def _locked_specs(prev: EditModel | None) -> list[Clip]:
     if prev is None:
         return []
@@ -375,6 +409,10 @@ def apply_plan(plan: EditPlan, a: AssetAnalysis,
     if "enhance_speech" in params:
         enhance_speech(params["enhance_speech"], model)
         report["ops"].append({"enhance_speech": True})
+
+    # overlap transitions (xfade): compress the timeline so the cross-fades line
+    # up AND captions / zooms stay synced (each cut overlaps by D).
+    _apply_overlap(plan, model, report)
 
     report["final_s"] = round(model.total_duration(), 2)
     report["kept_segments"] = len(keep.ranges)

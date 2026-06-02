@@ -98,13 +98,41 @@ class RulesProvider:
         elif "bright" in t:
             add("color_look", look="bright")
 
-        # ---- transitions (fade family)
+        # ---- transitions (fade family + overlap/xfade family)
+        def _dir(default="left"):
+            for d in ("left", "right", "up", "down"):
+                if d in t:
+                    return d
+            return default
+        tr_style = None
         if "dip to black" in t or "dip-to-black" in t:
-            ops.setdefault("transitions", {})["style"] = "dip-to-black"
+            tr_style = "dip-to-black"
         elif "dip to white" in t or "dip-to-white" in t:
-            ops.setdefault("transitions", {})["style"] = "dip-to-white"
-        elif "fade" in t or "cinematic" in t or "crossfade" in t or "dissolve" in t:
-            ops.setdefault("transitions", {})["style"] = "fade"
+            tr_style = "dip-to-white"
+        elif "cross dissolve" in t or "cross-dissolve" in t or "crossfade" in t:
+            tr_style = "cross-dissolve"
+        elif "film dissolve" in t:
+            tr_style = "film-dissolve"
+        elif "additive" in t:
+            tr_style = "additive-dissolve"
+        elif "wipe" in t:
+            tr_style = "wipe-" + _dir()
+        elif "slide" in t and "slideshow" not in t:
+            tr_style = "slide-" + _dir()
+        elif "iris" in t:
+            tr_style = "iris"
+        elif "pixelize" in t or "pixelate" in t:
+            tr_style = "pixelize"
+        elif "radial" in t:
+            tr_style = "radial"
+        elif "zoom transition" in t or "zoom dissolve" in t:
+            tr_style = "zoom"
+        elif "dissolve" in t:
+            tr_style = "cross-dissolve"
+        elif "fade" in t or "cinematic" in t:
+            tr_style = "fade"
+        if tr_style:
+            ops.setdefault("transitions", {})["style"] = tr_style
         if "constant gain" in t:
             ops.setdefault("transitions", {})["audio"] = "constant-gain"
         elif "exponential" in t:

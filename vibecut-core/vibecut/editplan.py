@@ -16,7 +16,13 @@ from dataclasses import dataclass, field
 ASPECTS = ["16:9", "9:16", "1:1", "4:5"]
 FREQ = ["low", "medium", "high"]
 LOOKS = ["none", "warm", "cool", "vivid", "bw", "film", "bright"]
-TRANSITIONS = ["none", "fade", "dip-to-black", "dip-to-white"]
+# fade family (concat pipeline) + overlap family (xfade between cuts)
+TRANSITIONS = ["none", "fade", "dip-to-black", "dip-to-white",
+               "cross-dissolve", "film-dissolve", "additive-dissolve",
+               "wipe-left", "wipe-right", "wipe-up", "wipe-down",
+               "slide-left", "slide-right", "slide-up", "slide-down",
+               "iris", "zoom", "pixelize", "radial"]
+OVERLAP_TRANSITIONS = set(TRANSITIONS[4:])  # the xfade-based ones
 AUDIO_CURVES = ["constant-power", "constant-gain", "exponential"]
 
 # Allowed operations and their parameter spec: name -> {param: (default, lo, hi)}
