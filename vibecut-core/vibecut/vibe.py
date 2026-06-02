@@ -126,7 +126,7 @@ class RulesProvider:
             ops.setdefault("suggest_broll", {})
 
         # ---- audio
-        if any(k in t for k in ("enhance", "clean audio", "denoise", "noise", "clarity")):
+        if re.search(r"enhance|clean.{0,6}audio|denoise|noise|clarity", t):
             ops.setdefault("enhance_speech", {})
         if "loud" in t or "normalize" in t:
             ops.setdefault("normalize_loudness", {})
