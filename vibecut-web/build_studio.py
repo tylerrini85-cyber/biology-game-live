@@ -220,8 +220,8 @@ function overlay(tl){
   var op=1;
   if(m.transition){ var d=0.4, total=state.report.final;
     if(tl<d) op=tl/d; else if(tl>total-d) op=Math.max(0,(total-tl)/d);
-    if(m.transition!=="fade"){ var dh=Math.min(d,0.3)/2, off=0;
-      for(var k=0;k<m.clips.length-1;k++){ off+=m.clips[k].src_out-m.clips[k].src_in; if(Math.abs(tl-off)<dh) op=Math.min(op, Math.abs(tl-off)/dh); } }
+    if(m.transition!=="fade"){ var dh=Math.min(d,0.3)/2;  // dip/overlap: dim near each cut boundary
+      for(var k=1;k<m.clips.length;k++){ var cut=m.clips[k].timeline_start; if(Math.abs(tl-cut)<dh) op=Math.min(op, Math.abs(tl-cut)/dh); } }
   }
   $('#vwrap').style.opacity=op;
 }
@@ -258,7 +258,7 @@ TEMPLATE = """<!doctype html>
     <div class="toggles" id="toggles"></div>
     <div class="toggles" style="margin-top:6px">
       <label>Look <select id="look"><option>none</option><option>warm</option><option>cool</option><option>vivid</option><option>bw</option><option>film</option><option>bright</option></select></label>
-      <label>Transition <select id="transition"><option selected>none</option><option>fade</option><option>dip-to-black</option><option>dip-to-white</option></select></label>
+      <label>Transition <select id="transition"><option selected>none</option><option>fade</option><option>dip-to-black</option><option>dip-to-white</option><option>cross-dissolve</option><option>film-dissolve</option><option>additive-dissolve</option><option>wipe-left</option><option>wipe-right</option><option>wipe-up</option><option>wipe-down</option><option>slide-left</option><option>slide-right</option><option>slide-up</option><option>slide-down</option><option>iris</option><option>zoom</option><option>pixelize</option><option>radial</option></select></label>
       <label>Audio fade <select id="audiocurve"><option>constant-power</option><option>constant-gain</option><option>exponential</option></select></label>
       <label>Caption style <select id="capstyle"><option>minimal</option><option selected>bold-karaoke</option><option>hype</option><option>neon</option><option>clean</option><option>lower-third</option></select></label>
       <label><input type="checkbox" id="t_upper"> UPPERCASE</label>

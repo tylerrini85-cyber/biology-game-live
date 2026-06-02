@@ -129,10 +129,22 @@
     else if (/vivid|saturated|vibrant/.test(t)) set("color_look", { look: "vivid" });
     else if (/film|cinematic|vintage|filmic/.test(t)) set("color_look", { look: "film" });
     else if (/bright/.test(t)) set("color_look", { look: "bright" });
-    // transitions (fade family)
-    if (/dip to black|dip-to-black/.test(t)) ops.transitions = { style: "dip-to-black" };
-    else if (/dip to white|dip-to-white/.test(t)) ops.transitions = { style: "dip-to-white" };
-    else if (/fade|cinematic|crossfade|dissolve/.test(t)) ops.transitions = { style: "fade" };
+    // transitions (fade family + overlap/xfade family)
+    var dir = /right/.test(t) ? "right" : /up/.test(t) ? "up" : /down/.test(t) ? "down" : "left", trS = null;
+    if (/dip to black|dip-to-black/.test(t)) trS = "dip-to-black";
+    else if (/dip to white|dip-to-white/.test(t)) trS = "dip-to-white";
+    else if (/cross dissolve|cross-dissolve|crossfade/.test(t)) trS = "cross-dissolve";
+    else if (/film dissolve/.test(t)) trS = "film-dissolve";
+    else if (/additive/.test(t)) trS = "additive-dissolve";
+    else if (/wipe/.test(t)) trS = "wipe-" + dir;
+    else if (/slide/.test(t) && !/slideshow/.test(t)) trS = "slide-" + dir;
+    else if (/iris/.test(t)) trS = "iris";
+    else if (/pixelize|pixelate/.test(t)) trS = "pixelize";
+    else if (/radial/.test(t)) trS = "radial";
+    else if (/zoom transition|zoom dissolve/.test(t)) trS = "zoom";
+    else if (/dissolve/.test(t)) trS = "cross-dissolve";
+    else if (/fade|cinematic/.test(t)) trS = "fade";
+    if (trS) ops.transitions = { style: trS };
     if (/constant gain/.test(t)) (ops.transitions = ops.transitions || {}).audio = "constant-gain";
     else if (/exponential/.test(t)) (ops.transitions = ops.transitions || {}).audio = "exponential";
     // caption tweaks
@@ -250,7 +262,22 @@
     if (P.normalize_loudness) report.ops.push(["normalize_loudness", "-16 LUFS"]);
     if (P.enhance_speech) report.ops.push(["enhance_speech", "on"]);
 
-    report.final = clips.reduce(function (s, c) { return s + (c.src_out - c.src_in); }, 0);
+    // overlap transitions (xfade): compress timeline so cross-fades line up and
+    // captions/zooms stay synced (each cut overlaps by D)
+    if (model.transition && XFADE[model.transition] && clips.length > 1) {
+      var durs = clips.map(function (c) { return c.src_out - c.src_in; });
+      var D = Math.min(0.4, 0.5 * Math.min.apply(null, durs));
+      var bnd = [], acc = 0;
+      for (var bi = 0; bi < durs.length - 1; bi++) { acc += durs[bi]; bnd.push(acc); }
+      var shift = function (x) { var cb = 0; bnd.forEach(function (b) { if (b <= x + 1e-6) cb++; }); return Math.max(0, x - cb * D); };
+      clips.forEach(function (c) { c.timeline_start = shift(c.timeline_start); });
+      model.broll.forEach(function (b) { b.timeline_start = shift(b.timeline_start); });
+      model.captions.events.forEach(function (ev) { ev.start = shift(ev.start); ev.end = shift(ev.end); ev.words.forEach(function (w) { w.t = shift(w.t); }); });
+      model.zoomKeyframes.forEach(function (k) { k.a = shift(k.a); k.b = shift(k.b); k.c = shift(k.c); });
+      model.transitionOverlap = D;
+      report.ops.push(["transition_overlap", D.toFixed(2) + "s"]);
+    }
+    report.final = clips.reduce(function (m, c) { return Math.max(m, c.timeline_start + (c.src_out - c.src_in)); }, 0);
     return { model: model, report: report };
   }
 
@@ -334,6 +361,12 @@
     vivid: "saturate(1.5) contrast(1.1)", bw: "grayscale(1) contrast(1.08)",
     film: "sepia(.18) saturate(.92) contrast(1.05)", bright: "brightness(1.08) contrast(1.05)"
   };
+  var XFADE = {
+    "cross-dissolve": "dissolve", "film-dissolve": "dissolve", "additive-dissolve": "dissolve",
+    "wipe-left": "wipeleft", "wipe-right": "wiperight", "wipe-up": "wipeup", "wipe-down": "wipedown",
+    "slide-left": "slideleft", "slide-right": "slideright", "slide-up": "slideup", "slide-down": "slidedown",
+    "iris": "circleopen", "zoom": "zoomin", "pixelize": "pixelize", "radial": "radial"
+  };
 
   function splitClip(model, i, atTimeline) {
     var c = model.clips[i], dur = c.src_out - c.src_in;
@@ -395,21 +428,36 @@
     model.clips.forEach(function (c, i) {
       parts.push("[0:a]atrim=start=" + c.src_in.toFixed(3) + ":end=" + c.src_out.toFixed(3) + ",asetpts=PTS-STARTPTS[a" + i + "]");
     });
-    var cc = model.clips.map(function (_, i) { return "[v" + i + "][a" + i + "]"; }).join("");
-    parts.push(cc + "concat=n=" + model.clips.length + ":v=1:a=1[vc][ac]");
+    var n = model.clips.length, W = model.profile.width, H = model.profile.height;
+    var overlap = model.transition && XFADE[model.transition] && n > 1;
+    var D = overlap ? Math.min(0.4, 0.5 * Math.min.apply(null, model.clips.map(function (c) { return c.src_out - c.src_in; }))) : 0;
+    var AC = { "constant-power": "qsin", "constant-gain": "tri", "exponential": "exp" };
+    var vl, audioSrc;
+    if (overlap) {
+      var crop = (H > W) ? "crop='min(iw,ih*" + W + "/" + H + ")':'min(ih,iw*" + H + "/" + W + ")'," : "";
+      for (var i = 0; i < n; i++) parts.push("[v" + i + "]" + crop + "scale=" + W + ":" + H + ",setsar=1,fps=30,format=yuv420p[vn" + i + "]");
+      var pv = "vn0";
+      for (var i = 1; i < n; i++) { parts.push("[" + pv + "][vn" + i + "]xfade=transition=" + XFADE[model.transition] + ":duration=" + D.toFixed(3) + ":offset=" + model.clips[i].timeline_start.toFixed(3) + "[vx" + i + "]"); pv = "vx" + i; }
+      vl = pv;
+      var cvx = AC[model.transitionAudio || "constant-power"] || "qsin", ap = "a0";
+      for (var i = 1; i < n; i++) { parts.push("[" + ap + "][a" + i + "]acrossfade=d=" + D.toFixed(3) + ":c1=" + cvx + ":c2=" + cvx + "[ax" + i + "]"); ap = "ax" + i; }
+      audioSrc = ap;
+    } else {
+      parts.push(model.clips.map(function (_, i) { return "[v" + i + "][a" + i + "]"; }).join("") + "concat=n=" + n + ":v=1:a=1[vc][ac]");
+      vl = "vc"; audioSrc = "ac";
+    }
     var af = ["loudnorm=I=-16:TP=-1.5:LRA=11"];
     if (model.enhance) af.push("afftdn=nf=-25,highpass=f=90,lowpass=f=12000");
     var sp = model.speed || 1;
     if (Math.abs(sp - 1) > 1e-3) { var f = sp; while (f > 2) { af.push("atempo=2.0"); f /= 2; } while (f < 0.5) { af.push("atempo=0.5"); f *= 2; } af.push("atempo=" + f.toFixed(3)); }
-    var totalDur = model.clips.reduce(function (s, c) { return s + (c.src_out - c.src_in); }, 0);
-    if (model.transition) {
-      var AC = { "constant-power": "qsin", "constant-gain": "tri", "exponential": "exp" };
+    var totalDur = model.clips.reduce(function (m, c) { return Math.max(m, (c.timeline_start || 0) + (c.src_out - c.src_in)); }, 0);
+    if (!overlap && model.transition) {
       var cv = AC[model.transitionAudio || "constant-power"] || "qsin", dd = 0.4;
       af.push("afade=t=in:st=0:d=" + dd + ":curve=" + cv);
       af.push("afade=t=out:st=" + Math.max(0, totalDur - dd).toFixed(3) + ":d=" + dd + ":curve=" + cv);
     }
     var hasMusic = model.music && model.music.url;
-    parts.push("[ac]" + af.join(",") + (hasMusic ? "[voicepre]" : "[aout]"));
+    parts.push("[" + audioSrc + "]" + af.join(",") + (hasMusic ? "[voicepre]" : "[aout]"));
     if (hasMusic) {
       parts.push("[1:a]volume=" + (model.music.gain || 0.25) + "[mv]");
       if (model.music.duck !== false) {
@@ -418,10 +466,9 @@
         parts.push("[va][mvd]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]");
       } else parts.push("[voicepre][mv]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]");
     }
-    var vl = "vc";
     if (model.colorLook && LOOK_FILTERS[model.colorLook]) { parts.push("[" + vl + "]" + LOOK_FILTERS[model.colorLook] + "[vcol]"); vl = "vcol"; }
     parts.push("[" + vl + "]ass=captions.ass[vcap]"); vl = "vcap";
-    if (model.transition) {
+    if (!overlap && model.transition) {
       var color = model.transition === "dip-to-white" ? "white" : "black";
       var d = 0.4, fades = ["fade=t=in:st=0:d=" + d + ":c=" + color,
                             "fade=t=out:st=" + Math.max(0, totalDur - d).toFixed(3) + ":d=" + d + ":c=" + color];
