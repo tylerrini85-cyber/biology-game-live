@@ -32,6 +32,21 @@ Useful flags: `--no-zooms`, `--no-captions`, `--encoder {mac,nvidia,intel,amd}`,
 Ollama model instead of the offline rules parser — see
 [docs/OLLAMA-SETUP.md](docs/OLLAMA-SETUP.md) for the one-time setup.
 
+### One command: your video → finished MP4
+
+The whole pipeline (extract audio → transcribe → analyze → vibe → export) in a
+single command:
+
+```bash
+python3 -m vibecut.oneshot myclip.mp4 "punchy under 60s, vertical for tiktok, bold captions"
+# -> writes vibecut_edit.mp4
+```
+
+One-time setup: **FFmpeg** on PATH, and `pip install faster-whisper` (for
+transcription). Already have a transcript? Add `--transcript clip.srt` to skip
+Whisper. Options: `--out`, `--whisper {tiny..large-v3}`, `--encoder`,
+`--media-library`, `--no-zooms`.
+
 ### Re-vibe with lock-to-protect (Spec §3)
 
 The product's signature move — "vibe again, edit it differently" — while
