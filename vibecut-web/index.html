@@ -188,9 +188,12 @@
     else if (/vivid|saturated|vibrant/.test(t)) set("color_look", { look: "vivid" });
     else if (/film|cinematic|vintage|filmic/.test(t)) set("color_look", { look: "film" });
     else if (/bright/.test(t)) set("color_look", { look: "bright" });
-    // transitions
-    if (/crossfade|cross dissolve|dissolve/.test(t)) ops.transitions = { style: "dissolve" };
-    else if (/fade|cinematic/.test(t)) ops.transitions = { style: "fade" };
+    // transitions (fade family)
+    if (/dip to black|dip-to-black/.test(t)) ops.transitions = { style: "dip-to-black" };
+    else if (/dip to white|dip-to-white/.test(t)) ops.transitions = { style: "dip-to-white" };
+    else if (/fade|cinematic|crossfade|dissolve/.test(t)) ops.transitions = { style: "fade" };
+    if (/constant gain/.test(t)) (ops.transitions = ops.transitions || {}).audio = "constant-gain";
+    else if (/exponential/.test(t)) (ops.transitions = ops.transitions || {}).audio = "exponential";
     // caption tweaks
     if (/uppercase|all caps|all-caps/.test(t)) set("add_captions", { uppercase: true });
     if (/neon/.test(t)) set("add_captions", { style: "neon" });
@@ -217,8 +220,8 @@
     // value toggles from Studio controls
     if (toggles.look && toggles.look !== "none") set("color_look", { look: toggles.look });
     else if (toggles.look === "none") delete ops.color_look;
-    if (toggles.transition === true) ops.transitions = ops.transitions || { style: "fade" };
-    else if (toggles.transition === false) delete ops.transitions;
+    if (toggles.transition && toggles.transition !== "none") ops.transitions = { style: toggles.transition, audio: toggles.audioCurve || "constant-power" };
+    else if (toggles.transition === "none") delete ops.transitions;
     if (toggles.capStyle) set("add_captions", { style: toggles.capStyle });
     if (toggles.upper === true) set("add_captions", { uppercase: true });
     if (toggles.speed && +toggles.speed !== 1) ops.speed = { factor: +toggles.speed };
@@ -331,7 +334,7 @@
     function push(op, info) { if (report) report.ops.push([op, info]); }
 
     model.captions = { style: "minimal", highlight: "#FFE000", events: [], uppercase: false, font: "Arial" };
-    model.zoomKeyframes = []; model.broll = []; model.colorLook = null; model.transition = null;
+    model.zoomKeyframes = []; model.broll = []; model.colorLook = null; model.transition = null; model.transitionAudio = "constant-power";
 
     if (P.add_captions) {
       var style = P.add_captions.style || "minimal", maxw = 4, events = [], line = [];
@@ -374,7 +377,7 @@
       push("auto_reframe", P.auto_reframe.target_aspect || "9:16");
     }
     if (P.color_look) { model.colorLook = P.color_look.look || "warm"; push("color_look", model.colorLook); }
-    if (P.transitions) { model.transition = P.transitions.style || "fade"; push("transitions", model.transition); }
+    if (P.transitions) { model.transition = P.transitions.style || "fade"; model.transitionAudio = P.transitions.audio || "constant-power"; push("transitions", model.transition); }
     model.speed = P.speed ? (P.speed.factor || 1) : 1;
     model.enhance = !!P.enhance_speech;
     if (P.speed) push("speed", model.speed + "x");
@@ -457,6 +460,13 @@
     if (model.enhance) af.push("afftdn=nf=-25,highpass=f=90,lowpass=f=12000");
     var sp = model.speed || 1;
     if (Math.abs(sp - 1) > 1e-3) { var f = sp; while (f > 2) { af.push("atempo=2.0"); f /= 2; } while (f < 0.5) { af.push("atempo=0.5"); f *= 2; } af.push("atempo=" + f.toFixed(3)); }
+    var totalDur = model.clips.reduce(function (s, c) { return s + (c.src_out - c.src_in); }, 0);
+    if (model.transition) {
+      var AC = { "constant-power": "qsin", "constant-gain": "tri", "exponential": "exp" };
+      var cv = AC[model.transitionAudio || "constant-power"] || "qsin", dd = 0.4;
+      af.push("afade=t=in:st=0:d=" + dd + ":curve=" + cv);
+      af.push("afade=t=out:st=" + Math.max(0, totalDur - dd).toFixed(3) + ":d=" + dd + ":curve=" + cv);
+    }
     var hasMusic = model.music && model.music.url;
     parts.push("[ac]" + af.join(",") + (hasMusic ? "[voicepre]" : "[aout]"));
     if (hasMusic) {
@@ -471,9 +481,18 @@
     if (model.colorLook && LOOK_FILTERS[model.colorLook]) { parts.push("[" + vl + "]" + LOOK_FILTERS[model.colorLook] + "[vcol]"); vl = "vcol"; }
     parts.push("[" + vl + "]ass=captions.ass[vcap]"); vl = "vcap";
     if (model.transition) {
-      var total = model.clips.reduce(function (s, c) { return s + (c.src_out - c.src_in); }, 0);
-      var d = 0.4, st = Math.max(0, total - d);
-      parts.push("[" + vl + "]fade=t=in:st=0:d=" + d + ",fade=t=out:st=" + st.toFixed(3) + ":d=" + d + "[vtr]"); vl = "vtr";
+      var color = model.transition === "dip-to-white" ? "white" : "black";
+      var d = 0.4, fades = ["fade=t=in:st=0:d=" + d + ":c=" + color,
+                            "fade=t=out:st=" + Math.max(0, totalDur - d).toFixed(3) + ":d=" + d + ":c=" + color];
+      if (model.transition !== "fade") {
+        var dh = Math.min(d, 0.3) / 2, off = 0;
+        for (var ci = 0; ci < model.clips.length - 1; ci++) {
+          off += model.clips[ci].src_out - model.clips[ci].src_in;
+          fades.push("fade=t=out:st=" + Math.max(0, off - dh).toFixed(3) + ":d=" + dh.toFixed(3) + ":c=" + color);
+          fades.push("fade=t=in:st=" + off.toFixed(3) + ":d=" + dh.toFixed(3) + ":c=" + color);
+        }
+      }
+      parts.push("[" + vl + "]" + fades.join(",") + "[vtr]"); vl = "vtr";
     }
     if (Math.abs(sp - 1) > 1e-3) parts.push("[" + vl + "]setpts=PTS/" + sp.toFixed(4) + "[vout]");
     else parts.push("[" + vl + "]null[vout]");

@@ -80,7 +80,8 @@ window.addEventListener('DOMContentLoaded', function(){
 
 function toggles(){ var t={}; OPTS.forEach(function(o){ t[o[0]]=$('#t_'+o[0]).checked; });
   if($('#look')) t.look=$('#look').value;
-  if($('#t_fade')) t.transition=$('#t_fade').checked;
+  if($('#transition')) t.transition=$('#transition').value;
+  if($('#audiocurve')) t.audioCurve=$('#audiocurve').value;
   if($('#capstyle')) t.capStyle=$('#capstyle').value;
   if($('#t_upper')) t.upper=$('#t_upper').checked;
   if($('#speed')) t.speed=$('#speed').value;
@@ -179,7 +180,7 @@ function startPlay(){
   else { vt0=performance.now(); vstart=0; }   // virtual clock (no video)
   loop();
 }
-function stopPlay(){ playing=false; $('#play').textContent='▶ Play edit'; var v=$('#videoEl'); if(v) v.pause(); if(raf) cancelAnimationFrame(raf); $('#vwrap').style.transform='scale(1)'; $('#caps').innerHTML=''; $('#broll').style.display='none'; $('#title').style.display='none'; $('#playhead').style.left='0'; }
+function stopPlay(){ playing=false; $('#play').textContent='▶ Play edit'; var v=$('#videoEl'); if(v) v.pause(); if(raf) cancelAnimationFrame(raf); $('#vwrap').style.transform='scale(1)'; $('#caps').innerHTML=''; $('#broll').style.display='none'; $('#title').style.display='none'; $('#vwrap').style.opacity=1; $('#playhead').style.left='0'; }
 function loop(){
   if(!playing) return;
   var m=state.model, clips=m.clips, c=clips[segIdx], v=$('#videoEl'), tl;
@@ -215,6 +216,14 @@ function overlay(tl){
   // intro title
   var ttl=m.titles && m.titles[0]; var td=$('#title');
   if(ttl && tl<=ttl.dur){ td.style.display='flex'; td.textContent=m.captions.uppercase?ttl.text.toUpperCase():ttl.text; } else td.style.display='none';
+  // transition fade / dip preview (opacity)
+  var op=1;
+  if(m.transition){ var d=0.4, total=state.report.final;
+    if(tl<d) op=tl/d; else if(tl>total-d) op=Math.max(0,(total-tl)/d);
+    if(m.transition!=="fade"){ var dh=Math.min(d,0.3)/2, off=0;
+      for(var k=0;k<m.clips.length-1;k++){ off+=m.clips[k].src_out-m.clips[k].src_in; if(Math.abs(tl-off)<dh) op=Math.min(op, Math.abs(tl-off)/dh); } }
+  }
+  $('#vwrap').style.opacity=op;
 }
 
 /* ---- export ---- */
@@ -249,7 +258,8 @@ TEMPLATE = """<!doctype html>
     <div class="toggles" id="toggles"></div>
     <div class="toggles" style="margin-top:6px">
       <label>Look <select id="look"><option>none</option><option>warm</option><option>cool</option><option>vivid</option><option>bw</option><option>film</option><option>bright</option></select></label>
-      <label><input type="checkbox" id="t_fade"> Fade in/out</label>
+      <label>Transition <select id="transition"><option selected>none</option><option>fade</option><option>dip-to-black</option><option>dip-to-white</option></select></label>
+      <label>Audio fade <select id="audiocurve"><option>constant-power</option><option>constant-gain</option><option>exponential</option></select></label>
       <label>Caption style <select id="capstyle"><option>minimal</option><option selected>bold-karaoke</option><option>hype</option><option>neon</option><option>clean</option><option>lower-third</option></select></label>
       <label><input type="checkbox" id="t_upper"> UPPERCASE</label>
       <label>Speed <select id="speed"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select></label>
