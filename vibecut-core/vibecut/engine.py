@@ -65,21 +65,48 @@ def remove_fillers(p: dict, a: AssetAnalysis, keep: KeepList, protect: list[tupl
     return cuts
 
 
+def _phrases(words: list[Word], pause_s: float = 0.6) -> list[dict]:
+    """Group consecutive words into phrases, split on speech pauses."""
+    out: list[dict] = []
+    cur: list[Word] = []
+    for w in sorted(words, key=lambda x: x.start):
+        if cur and (w.start - cur[-1].end) > pause_s:
+            out.append(_phrase(cur)); cur = []
+        cur.append(w)
+    if cur:
+        out.append(_phrase(cur))
+    return out
+
+
+def _phrase(ws: list[Word]) -> dict:
+    return {"start": ws[0].start, "end": ws[-1].end,
+            "emphasis": sum(w.emphasis for w in ws) / len(ws), "n": len(ws)}
+
+
 def target_duration(p: dict, a: AssetAnalysis, keep: KeepList, protect: list[tuple]) -> dict:
-    """Ladder trim: drop lowest-emphasis surviving words until under target."""
+    """Ladder trim: drop whole lowest-emphasis PHRASES (not single words) so
+    cuts land on natural pause boundaries and stay contiguous. Falls back to
+    word-level only if phrase trimming can't reach the target."""
     target = p["max_seconds"]
     if keep.total() <= target:
-        return {"trimmed_words": 0, "met": True}
+        return {"trimmed_phrases": 0, "met": True}
     survivors = [w for w in a.words if keep.contains(w.mid) and not _protected(w.mid, protect)]
-    survivors.sort(key=lambda w: (w.emphasis, w.dur))
+    phrases = sorted(_phrases(survivors), key=lambda ph: (ph["emphasis"], ph["end"] - ph["start"]))
     trimmed = 0
-    for w in survivors:
+    for ph in phrases:
         if keep.total() <= target:
             break
-        if keep.contains(w.mid):
-            keep.cut((w.start, w.end))
-            trimmed += 1
-    return {"trimmed_words": trimmed, "met": keep.total() <= target + 1e-3}
+        keep.cut((ph["start"], ph["end"]))
+        trimmed += 1
+    # fallback: if a few long protected/high-emphasis phrases keep us over,
+    # shave remaining lowest-emphasis words
+    if keep.total() > target:
+        for w in sorted(survivors, key=lambda x: (x.emphasis, x.dur)):
+            if keep.total() <= target:
+                break
+            if keep.contains(w.mid):
+                keep.cut((w.start, w.end))
+    return {"trimmed_phrases": trimmed, "met": keep.total() <= target + 1e-3}
 
 
 # ---- build ops: write into the EditModel ----------------------------------

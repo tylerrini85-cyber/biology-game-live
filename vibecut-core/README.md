@@ -68,7 +68,16 @@ produced by faster-whisper / Silero VAD / PySceneDetect behind the same schema.
 ## Test it
 
 ```bash
-python3 -m unittest discover -s tests -v   # 30 tests, ~0.03s
+python3 -m unittest discover -s tests -v   # 31 tests, ~0.02s
+```
+
+Every run also prints an **ASCII timeline** of the original footage so you can
+see what was kept vs cut at a glance:
+
+```
+  source 0s   [············#·····######······############·····########·] 92s
+  legend: # kept  · cut  @ locked
+  kept 35.2s of 92.0s (38%)  ·  clips 6  ·  captions 6  ·  zooms 6  ·  1080x1920
 ```
 
 ## Layout
@@ -111,10 +120,9 @@ This is only the **edit logic**. In the shipping desktop app (Spec §4–5):
 
 ## Known refinements (next iterations)
 
-- **Phrase-level trimming.** `target_duration` currently trims the
-  lowest-emphasis *words*, which can look choppy on extreme cuts (e.g. 92s→13s).
-  The planned upgrade selects whole low-emphasis *phrases/sentences* using
-  pause + scene boundaries, for natural, contiguous highlights.
+- **Scene-aware phrase trimming.** `target_duration` now trims whole
+  lowest-emphasis *phrases* at pause boundaries (contiguous, not choppy). Next:
+  also respect shot/scene boundaries so cuts never land mid-action.
 - **Per-clip captions on lock.** Captions regenerate globally on re-vibe; a
   locked clip could optionally retain its own caption styling.
 - **Real analysis layer.** Swap the sample JSON for live Whisper + Silero VAD

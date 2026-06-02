@@ -121,6 +121,13 @@ class TestEngine(unittest.TestCase):
         for prev, nxt in zip(vt.clips, vt.clips[1:]):
             self.assertAlmostEqual(prev.timeline_end, nxt.timeline_start, places=3)
 
+    def test_phrase_level_trim_stays_contiguous(self):
+        # phrase-level trimming should NOT shatter the clip into many fragments
+        plan = RulesProvider().plan("under 40 seconds")
+        model, rep = apply_plan(plan, self.a)
+        self.assertLessEqual(model.total_duration(), 40.05)
+        self.assertLessEqual(len(model.video_track().clips), 8)
+
     def test_punch_in_creates_keyframes(self):
         plan = RulesProvider().plan("make it really punchy with lots of zoom")
         model, rep = apply_plan(plan, self.a)

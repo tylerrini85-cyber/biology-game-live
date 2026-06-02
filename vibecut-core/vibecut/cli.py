@@ -18,6 +18,7 @@ from .editmodel import EditModel
 from .editplan import to_plain
 from .engine import apply_plan
 from .render import build_ass, build_ffmpeg_command
+from .timeline import render as render_timeline
 from .vibe import make_provider
 
 _HERE = os.path.dirname(__file__)
@@ -52,7 +53,7 @@ def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
                                ass_path=ass_path, encoder=encoder)
     return {"provider": provider.name, "plan": to_plain(plan),
             "report": report, "ffmpeg": cmd, "ass_path": ass_path,
-            "edit_model": edit_model}
+            "edit_model": edit_model, "original_s": analysis.duration}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -103,6 +104,9 @@ def main(argv: list[str] | None = None) -> int:
         for nte in r["notes"]:
             print(f"  note: {nte}")
     print(f"  captions : {len(res['edit_model'].captions.events)} events -> {res['ass_path']}")
+    print("  " + "-" * 58)
+    print("  TIMELINE (original footage: kept vs cut):")
+    print(render_timeline(res["edit_model"], res["original_s"]))
     print("  " + "-" * 58)
     print("  FFMPEG (deterministic export):\n")
     print("  " + res["ffmpeg"].replace("\n", "\n  "))
