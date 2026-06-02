@@ -207,6 +207,9 @@ def _build(model: EditModel, ass_path: str):
             afilters.append("afftdn=nf=-25,highpass=f=90,lowpass=f=12000")
     if abs(float(speed_f) - 1.0) > 1e-3:
         afilters += _atempo_chain(float(speed_f))
+    vg = float(getattr(model, "voice_gain", 1.0) or 1.0)
+    if abs(vg - 1.0) > 1e-3:
+        afilters.append(f"volume={vg:.2f}")
     # fade-family audio crossfade curve at start/end (overlap uses acrossfade instead)
     if not overlap and tr and style in ("fade", "dip-to-black", "dip-to-white"):
         total_a = sum(c.src_out - c.src_in for c in vt.clips)
@@ -223,8 +226,9 @@ def _build(model: EditModel, ass_path: str):
         midx = 1 + len(existing)
         parts.append(f"[{midx}:a]volume={float(mus.get('gain', 0.25)):.3f}[mv]")
         if mus.get("duck", True):
+            ratio = round(2.0 + float(mus.get("duck_amount", 0.8)) * 8.0, 1)  # 0..1 -> 2..10
             parts.append("[voicepre]asplit=2[va][vb]")
-            parts.append("[mv][vb]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[mvd]")
+            parts.append(f"[mv][vb]sidechaincompress=threshold=0.03:ratio={ratio}:attack=20:release=300[mvd]")
             parts.append("[va][mvd]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]")
         else:
             parts.append("[voicepre][mv]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]")

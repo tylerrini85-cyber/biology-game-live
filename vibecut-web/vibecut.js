@@ -255,7 +255,7 @@
       off += r[1] - r[0];
     });
     var model = { profile: { width: 1920, height: 1080 }, clips: clips, broll: [], notes: [],
-                  titles: [], speed: 1, enhance: false, zoomKeyframes: [],
+                  titles: [], speed: 1, enhance: false, voice_gain: 1, zoomKeyframes: [],
                   captions: { style: "minimal", highlight: "#FFE000", events: [] } };
 
     decorate(model, analysis, P, library, protect, report);
@@ -450,6 +450,7 @@
     if (model.enhance) af.push("afftdn=nf=-25,highpass=f=90,lowpass=f=12000");
     var sp = model.speed || 1;
     if (Math.abs(sp - 1) > 1e-3) { var f = sp; while (f > 2) { af.push("atempo=2.0"); f /= 2; } while (f < 0.5) { af.push("atempo=0.5"); f *= 2; } af.push("atempo=" + f.toFixed(3)); }
+    if (model.voice_gain && Math.abs(model.voice_gain - 1) > 1e-3) af.push("volume=" + (+model.voice_gain).toFixed(2));
     var totalDur = model.clips.reduce(function (m, c) { return Math.max(m, (c.timeline_start || 0) + (c.src_out - c.src_in)); }, 0);
     if (!overlap && model.transition) {
       var cv = AC[model.transitionAudio || "constant-power"] || "qsin", dd = 0.4;
@@ -461,8 +462,9 @@
     if (hasMusic) {
       parts.push("[1:a]volume=" + (model.music.gain || 0.25) + "[mv]");
       if (model.music.duck !== false) {
+        var rt = (2 + (model.music.duck_amount != null ? model.music.duck_amount : 0.8) * 8).toFixed(1);
         parts.push("[voicepre]asplit=2[va][vb]");
-        parts.push("[mv][vb]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[mvd]");
+        parts.push("[mv][vb]sidechaincompress=threshold=0.03:ratio=" + rt + ":attack=20:release=300[mvd]");
         parts.push("[va][mvd]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]");
       } else parts.push("[voicepre][mv]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]");
     }

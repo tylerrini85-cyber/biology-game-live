@@ -278,6 +278,29 @@ class TestSpeedTitleAudio(unittest.TestCase):
         self.assertIn("afftdn", args[args.index("-filter_complex") + 1])
 
 
+class TestAudioMixer(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+
+    def test_voice_gain_adds_volume_filter(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("bold captions"), self.a)
+        model.voice_gain = 1.5
+        args = build_ffmpeg_args(model, self.a.source_url, "o.mp4")
+        self.assertIn("volume=1.50", args[args.index("-filter_complex") + 1])
+
+    def test_duck_amount_sets_ratio(self):
+        from vibecut.render import build_ffmpeg_args
+        with tempfile.TemporaryDirectory() as d:
+            mp = os.path.join(d, "m.mp3"); open(mp, "wb").write(b"\x00")
+            model, _ = apply_plan(RulesProvider().plan("bold captions"), self.a)
+            model.music = {"url": mp, "gain": 0.3, "duck": True, "duck_amount": 1.0}
+            fc = build_ffmpeg_args(model, self.a.source_url, "o.mp4")[
+                build_ffmpeg_args(model, self.a.source_url, "o.mp4").index("-filter_complex") + 1]
+            self.assertIn("ratio=10.0", fc)  # duck_amount 1.0 -> ratio 10
+            self.assertIn("volume=0.3", fc)
+
+
 class TestOverlapTransitions(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)

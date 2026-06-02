@@ -80,6 +80,7 @@ window.addEventListener('DOMContentLoaded', function(){
   $('#saveproj').addEventListener('click', saveProject);
   $('#loadbtn').addEventListener('click', function(){ $('#loadproj').click(); });
   $('#loadproj').addEventListener('change', loadProject);
+  ['#voicegain','#musicgain','#duckamt'].forEach(function(id){ if($(id)) $(id).addEventListener('input', audioMix); });
   doVibe(null);  // initial edit on the sample
 });
 
@@ -166,6 +167,12 @@ function render(){
   updUndo();
 }
 function escAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
+function audioMix(){
+  if(!state.model) return;
+  state.model.voice_gain=parseFloat($('#voicegain').value);
+  if(state.model.music){ state.model.music.gain=parseFloat($('#musicgain').value); state.model.music.duck_amount=parseFloat($('#duckamt').value); }
+  $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4');
+}
 function editCap(i, text){
   var ev=state.model.captions.events[i]; if(!ev) return;
   pushUndo();
@@ -306,6 +313,11 @@ TEMPLATE = """<!doctype html>
     </div>
     <div style="margin-top:10px"><div class="label">Background music (optional, auto-ducked)</div>
       <input type="file" id="music" accept="audio/*"> <span class="muted" id="mstatus"></span></div>
+    <div class="toggles" style="margin-top:10px">
+      <label>Voice vol <input type="range" id="voicegain" min="0.5" max="2" step="0.05" value="1"></label>
+      <label>Music vol <input type="range" id="musicgain" min="0" max="1" step="0.05" value="0.25"></label>
+      <label>Duck <input type="range" id="duckamt" min="0" max="1" step="0.05" value="0.8"></label>
+    </div>
     <div class="row" style="margin-top:14px">
       <button id="vibe">Vibe it &#9654;</button>
       <button id="revibe" class="ghost">Re-vibe (keeps 🔒 locked)</button>
