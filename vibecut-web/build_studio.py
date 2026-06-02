@@ -45,6 +45,9 @@ CSS = """
   .clips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
   .clip{background:#0b0d12;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;display:flex;gap:6px;align-items:center}
   .clip.locked{border-color:var(--lock)}
+  .caprow{display:flex;gap:8px;align-items:center;padding:3px 0}
+  .caprow .t{color:var(--muted);font-size:12px;min-width:42px}
+  .caprow input{flex:1;background:#0b0d12;border:1px solid var(--line);color:var(--txt);border-radius:7px;padding:6px 8px;font-size:13px}
   .chip{display:inline-block;background:#1e2430;border:1px solid var(--line);color:var(--accent);border-radius:999px;padding:3px 10px;margin:3px 4px 0 0;font-size:12px}
   .stat b{font-size:18px}.stat span{color:var(--muted);font-size:12px;display:block}
   .stats{display:flex;gap:18px;flex-wrap:wrap;margin-top:6px}
@@ -66,6 +69,7 @@ window.addEventListener('DOMContentLoaded', function(){
     box.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="t_'+o[0]+'"'+(on?' checked':'')+'> '+o[1]+'</label>'); });
   $('#video').addEventListener('change', loadVideo);
   $('#srt').addEventListener('change', loadSRT);
+  if($('#music')) $('#music').addEventListener('change', function(e){ var f=e.target.files[0]; if(f){ state.musicName=f.name; $('#mstatus').textContent='music: '+f.name; doVibe(null); } });
   $('#vibe').addEventListener('click', function(){ doVibe(null); });
   $('#revibe').addEventListener('click', function(){ doVibe(state.model); });
   $('#play').addEventListener('click', togglePlay);
@@ -103,7 +107,10 @@ function doVibe(prev){
   var r = VibeCut.edit(state.analysis, state.plan, LIB, prev);
   state.model=r.model; state.report=r.report;
   var tt=$('#titletext')?$('#titletext').value.trim():'';
-  if(tt) state.model.titles=[{text:tt,start:0,dur:2.5}];
+  if(tt) state.model.titles.push({text:tt,start:0,dur:2.5,kind:'intro'});
+  var lt=$('#lowerthird')?$('#lowerthird').value.trim():'';
+  if(lt) state.model.titles.push({text:lt,start:1,dur:3,kind:'lower-third'});
+  if(state.musicName) state.model.music={url:state.musicName,gain:0.25,duck:true};
   applyAspect(); render();
 }
 function applyAspect(){
@@ -138,6 +145,20 @@ function render(){
     '<div class="stat"><b>'+m.zoomKeyframes.length+'</b><span>zooms</span></div>'+
     '<div class="stat"><b>'+m.profile.width+'×'+m.profile.height+'</b><span>frame</span></div>';
   $('#ffmpeg').textContent=VibeCut.ffmpeg(m, state.analysis.source_url||'clip.mp4');
+  // editable captions
+  $('#capeditor').innerHTML=m.captions.events.map(function(ev,i){
+    return '<div class="caprow"><span class="t">'+ev.start.toFixed(1)+'s</span>'
+      +'<input type="text" value="'+escAttr(ev.words.map(function(w){return w.w;}).join(" "))
+      +'" onchange="editCap('+i+',this.value)"></div>'; }).join('') || '<span class="muted">no captions</span>';
+}
+function escAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
+function editCap(i, text){
+  var ev=state.model.captions.events[i]; if(!ev) return;
+  var toks=text.trim().split(/\s+/).filter(Boolean);
+  if(!toks.length){ state.model.captions.events.splice(i,1); }
+  else { var span=(ev.end-ev.start)/toks.length;
+    ev.words=toks.map(function(w,j){ return {w:w, t:ev.start+j*span, d:span, st:0}; }); }
+  $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4');
 }
 
 function recount(){ state.report.final=state.model.clips.reduce(function(s,c){return s+(c.src_out-c.src_in);},0); }
@@ -233,8 +254,14 @@ TEMPLATE = """<!doctype html>
       <label><input type="checkbox" id="t_upper"> UPPERCASE</label>
       <label>Speed <select id="speed"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select></label>
     </div>
-    <div style="margin-top:10px"><div class="label">Intro title (optional)</div>
-      <input type="text" id="titletext" placeholder="e.g. My Channel"></div>
+    <div class="row" style="margin-top:10px">
+      <div style="flex:1;min-width:180px"><div class="label">Intro title (optional)</div>
+        <input type="text" id="titletext" placeholder="e.g. My Channel"></div>
+      <div style="flex:1;min-width:180px"><div class="label">Lower-third (optional)</div>
+        <input type="text" id="lowerthird" placeholder="e.g. Jane Doe — Founder"></div>
+    </div>
+    <div style="margin-top:10px"><div class="label">Background music (optional, auto-ducked)</div>
+      <input type="file" id="music" accept="audio/*"> <span class="muted" id="mstatus"></span></div>
     <div class="row" style="margin-top:14px">
       <button id="vibe">Vibe it &#9654;</button>
       <button id="revibe" class="ghost">Re-vibe (keeps 🔒 locked)</button>
@@ -255,6 +282,9 @@ TEMPLATE = """<!doctype html>
 
   <div class="card"><div class="label">Edit plan</div><div id="plan"></div>
     <div class="stats" id="stats"></div></div>
+
+  <div class="card"><div class="label">Captions &mdash; edit the words by hand</div>
+    <div id="capeditor"></div></div>
 
   <div class="card"><div class="label">Export</div>
     <div class="row" style="margin-bottom:10px">
