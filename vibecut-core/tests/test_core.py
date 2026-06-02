@@ -174,6 +174,41 @@ class TestEngine(unittest.TestCase):
         self.assertTrue(transforms and transforms[0].keyframes.get("scale"))
 
 
+class TestColorAndTransitions(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+
+    def test_vibe_detects_look_and_transition(self):
+        plan = RulesProvider().plan("warm cinematic look with fades, uppercase captions")
+        self.assertTrue(plan.has("color_look"))
+        self.assertTrue(plan.has("transitions"))
+        cl = next(o for o in plan.ops if o.op == "color_look")
+        self.assertEqual(cl.params["look"], "warm")
+
+    def test_color_look_baked_into_export(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("vivid colors"), self.a)
+        fc = build_ffmpeg_args(model, self.a.source_url, "out.mp4")[
+            build_ffmpeg_args(model, self.a.source_url, "out.mp4").index("-filter_complex") + 1]
+        self.assertIn("saturation=1.4", fc)  # vivid grade
+
+    def test_fade_baked_into_export(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("add fades"), self.a)
+        args = build_ffmpeg_args(model, self.a.source_url, "out.mp4")
+        fc = args[args.index("-filter_complex") + 1]
+        self.assertIn("fade=t=in", fc)
+        self.assertIn("fade=t=out", fc)
+
+    def test_caption_uppercase_and_style(self):
+        model, _ = apply_plan(RulesProvider().plan("neon uppercase captions"), self.a)
+        self.assertEqual(model.captions.style, "neon")
+        self.assertTrue(model.captions.uppercase)
+        ass = build_ass(model.captions)
+        # at least one word should be rendered upper-cased
+        self.assertTrue(any(cw.w.upper() in ass for ev in model.captions.events for cw in ev.words))
+
+
 class TestBroll(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)

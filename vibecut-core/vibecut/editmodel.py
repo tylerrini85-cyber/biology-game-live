@@ -83,6 +83,9 @@ class Captions:
     style: str = "minimal"
     position: str = "lower-mid"
     highlight_color: str = "#FFE000"
+    font: str = "Arial"
+    uppercase: bool = False
+    size: int = 0  # 0 = auto from style
     events: list[CaptionEvent] = field(default_factory=list)
 
 
@@ -148,6 +151,9 @@ class EditModel:
                             style=cap_d.get("style", "minimal"),
                             position=cap_d.get("position", "lower-mid"),
                             highlight_color=cap_d.get("highlight_color", "#FFE000"),
+                            font=cap_d.get("font", "Arial"),
+                            uppercase=cap_d.get("uppercase", False),
+                            size=cap_d.get("size", 0),
                             events=events)
         return cls(profile=prof, tracks=tracks, captions=captions,
                    notes=list(d.get("notes", [])))

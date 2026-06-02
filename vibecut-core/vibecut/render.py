@@ -21,6 +21,17 @@ import subprocess
 
 from .editmodel import Captions, EditModel
 
+# LUT-style color grades -> FFmpeg filter chains
+LOOK_FILTERS = {
+    "warm": "eq=gamma_r=1.06:gamma_b=0.94:saturation=1.06",
+    "cool": "eq=gamma_b=1.06:gamma_r=0.95:saturation=1.03",
+    "vivid": "eq=saturation=1.4:contrast=1.1",
+    "bw": "hue=s=0,eq=contrast=1.08",
+    "film": "curves=preset=medium_contrast,eq=saturation=0.92",
+    "bright": "eq=brightness=0.06:contrast=1.05",
+    "none": "",
+}
+
 # vendor -> hardware H.264 encoder (Spec §11: hardware encoders only)
 HW_ENCODERS = {
     "mac": "h264_videotoolbox",
@@ -51,8 +62,11 @@ def _ts(t: float) -> str:
 def build_ass(captions: Captions, width: int = 1080, height: int = 1920) -> str:
     primary = "&HFFFFFF&"
     highlight = _hex_to_ass(captions.highlight_color)
-    bold = -1 if captions.style in ("bold-karaoke", "hype") else 0
-    fontsize = 96 if captions.style in ("bold-karaoke", "hype") else 64
+    boldish = captions.style in ("bold-karaoke", "hype", "neon")
+    bold = -1 if boldish else 0
+    fontsize = captions.size if captions.size and captions.size > 0 else (96 if boldish else 64)
+    font = captions.font or "Arial"
+    outline = 2 if captions.style == "clean" else 4
     margin_v = int(height * 0.18) if captions.position == "lower-mid" else 60
 
     lines = [
@@ -64,8 +78,8 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920) -> str:
         ("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, "
          "OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, "
          "Shadow, Alignment, MarginL, MarginR, MarginV, Encoding"),
-        (f"Style: Vibe,Arial,{fontsize},{primary},{highlight},&H000000&,"
-         f"&H80000000&,{bold},0,1,4,2,2,40,40,{margin_v},1"),
+        (f"Style: Vibe,{font},{fontsize},{primary},{highlight},&H000000&,"
+         f"&H80000000&,{bold},0,1,{outline},2,2,40,40,{margin_v},1"),
         "",
         "[Events]",
         "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
@@ -75,7 +89,8 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920) -> str:
         chunks = []
         for cw in ev.words:
             k = max(1, int(round(cw.d * 100)))
-            chunks.append(f"{{\\kf{k}}}{cw.w} ")
+            word = cw.w.upper() if captions.uppercase else cw.w
+            chunks.append(f"{{\\kf{k}}}{word} ")
         text = "".join(chunks).strip()
         lines.append(f"Dialogue: 0,{_ts(ev.start)},{_ts(ev.end)},Vibe,,0,0,0,,{text}")
     return "\n".join(lines) + "\n"
@@ -165,7 +180,25 @@ def _build(model: EditModel, ass_path: str):
         vlabel = f"ov{idx}"
         broll_paths.append(_broll_url(c))
 
-    parts.append(f"[{vlabel}]ass={ass_path}[vout]")
+    # color grade (LUT-style look)
+    cl = next((f for f in vt.filters if f.type == "color_look"), None)
+    if cl and LOOK_FILTERS.get(cl.params.get("look")):
+        parts.append(f"[{vlabel}]{LOOK_FILTERS[cl.params['look']]}[vcol]")
+        vlabel = "vcol"
+
+    # burn captions
+    parts.append(f"[{vlabel}]ass={ass_path}[vcap]")
+    vlabel = "vcap"
+
+    # fade / dissolve transition (fade in + out around the whole edit)
+    tr = next((f for f in vt.filters if f.type == "transition"), None)
+    if tr and tr.params.get("style") in ("fade", "dissolve"):
+        total = sum(c.src_out - c.src_in for c in vt.clips)
+        d = float(tr.params.get("duration", 0.4))
+        st = max(0.0, total - d)
+        parts.append(f"[{vlabel}]fade=t=in:st=0:d={d:.3f},fade=t=out:st={st:.3f}:d={d:.3f}[vout]")
+    else:
+        parts.append(f"[{vlabel}]null[vout]")
     return ";".join(parts), broll_paths, skipped
 
 

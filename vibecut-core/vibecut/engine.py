@@ -136,8 +136,20 @@ def add_captions(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel) ->
             flush()
     flush()
     model.captions = Captions(style=p["style"], position=p["position"],
-                              highlight_color=p["highlight_color"], events=events)
+                              highlight_color=p["highlight_color"],
+                              font=p.get("font", "Arial"), uppercase=bool(p.get("uppercase", False)),
+                              size=int(p.get("size", 0)), events=events)
     return len(events)
+
+
+def color_look(p: dict, model: EditModel) -> None:
+    model.video_track().filters.append(
+        Effect(type="color_look", params={"look": p["look"], "amount": p["amount"]}))
+
+
+def transitions(p: dict, model: EditModel) -> None:
+    model.video_track().filters.append(
+        Effect(type="transition", params={"style": p["style"], "duration": p["duration"]}))
 
 
 def punch_in(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel,
@@ -318,6 +330,12 @@ def apply_plan(plan: EditPlan, a: AssetAnalysis,
     if "auto_reframe" in params:
         auto_reframe(params["auto_reframe"], a, model)
         report["ops"].append({"auto_reframe": params["auto_reframe"]["target_aspect"]})
+    if "color_look" in params:
+        color_look(params["color_look"], model)
+        report["ops"].append({"color_look": params["color_look"]["look"]})
+    if "transitions" in params:
+        transitions(params["transitions"], model)
+        report["ops"].append({"transitions": params["transitions"]["style"]})
     if "normalize_loudness" in params:
         normalize_loudness(params["normalize_loudness"], model)
         report["ops"].append({"normalize_loudness": params["normalize_loudness"]["i"]})

@@ -15,6 +15,8 @@ from dataclasses import dataclass, field
 
 ASPECTS = ["16:9", "9:16", "1:1", "4:5"]
 FREQ = ["low", "medium", "high"]
+LOOKS = ["none", "warm", "cool", "vivid", "bw", "film", "bright"]
+TRANSITIONS = ["none", "fade", "dissolve"]
 
 # Allowed operations and their parameter spec: name -> {param: (default, lo, hi)}
 # (string/enum params handled separately in _clamp).
@@ -32,17 +34,22 @@ OP_SPEC: dict[str, dict] = {
     "add_captions":      {"style": ("minimal", None, None),
                           "position": ("lower-mid", None, None),
                           "max_words_per_line": (4, 1, 12),
-                          "highlight_color": ("#FFE000", None, None)},
+                          "highlight_color": ("#FFE000", None, None),
+                          "font": ("Arial", None, None),
+                          "uppercase": (False, None, None),
+                          "size": (0, 0, 240)},
     "normalize_loudness": {"i": (-16.0, -31.0, -9.0),
                            "tp": (-1.5, -9.0, 0.0),
                            "lra": (11.0, 1.0, 20.0)},
     "enhance_speech":    {"strength": (0.8, 0.0, 1.0)},
     "suggest_broll":     {"density": ("medium", None, None), "query": ("auto", None, None)},
+    "color_look":        {"look": ("warm", None, None), "amount": (0.8, 0.0, 1.0)},
+    "transitions":       {"style": ("fade", None, None), "duration": (0.4, 0.1, 2.0)},
 }
 
 DENSITY = ["low", "medium", "high"]
 
-CAPTION_STYLES = ["minimal", "bold-karaoke", "lower-third", "hype"]
+CAPTION_STYLES = ["minimal", "bold-karaoke", "lower-third", "hype", "neon", "clean"]
 
 
 @dataclass
@@ -83,6 +90,10 @@ def _clamp(op: str, params: dict) -> dict:
         out["style"] = "minimal"
     if op == "suggest_broll" and out["density"] not in DENSITY:
         out["density"] = "medium"
+    if op == "color_look" and out["look"] not in LOOKS:
+        out["look"] = "warm"
+    if op == "transitions" and out["style"] not in TRANSITIONS:
+        out["style"] = "fade"
     return out
 
 

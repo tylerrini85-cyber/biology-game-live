@@ -84,6 +84,34 @@ class RulesProvider:
         else:
             aspect = "16:9"
 
+        # ---- color grade / look
+        if "warm" in t:
+            add("color_look", look="warm")
+        elif "cool" in t or "moody" in t:
+            add("color_look", look="cool")
+        elif "black and white" in t or "b&w" in t or "grayscale" in t or "monochrome" in t:
+            add("color_look", look="bw")
+        elif "vivid" in t or "saturated" in t or "vibrant" in t:
+            add("color_look", look="vivid")
+        elif "film" in t or "cinematic" in t or "vintage" in t or "filmic" in t:
+            add("color_look", look="film")
+        elif "bright" in t:
+            add("color_look", look="bright")
+
+        # ---- transitions
+        if "crossfade" in t or "cross dissolve" in t or "dissolve" in t:
+            ops.setdefault("transitions", {})["style"] = "dissolve"
+        elif "fade" in t or "cinematic" in t:
+            ops.setdefault("transitions", {})["style"] = "fade"
+
+        # ---- caption tweaks
+        if "uppercase" in t or "all caps" in t or "all-caps" in t:
+            add("add_captions", uppercase=True)
+        if "neon" in t:
+            add("add_captions", style="neon")
+        elif "clean captions" in t or "simple captions" in t:
+            add("add_captions", style="clean")
+
         # ---- b-roll (retrieved from the user's own library; never generated)
         if any(k in t for k in ("b-roll", "broll", "b roll", "cutaway", "cutaways",
                                 "add visuals", "stock footage")):
