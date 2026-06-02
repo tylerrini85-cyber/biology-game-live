@@ -247,6 +247,26 @@ class TestRender(unittest.TestCase):
         self.assertFalse(ok)
         self.assertTrue("FFmpeg" in msg or "not found" in msg)
 
+    def test_zoom_baked_into_export(self):
+        from vibecut.render import build_ffmpeg_args
+        model, _ = apply_plan(RulesProvider().plan("really punchy with lots of zoom"), self.a)
+        args = build_ffmpeg_args(model, self.a.source_url, "out.mp4")
+        fc = args[args.index("-filter_complex") + 1]   # raw, unescaped filtergraph
+        self.assertIn("between(t,", fc)                  # time-based zoom expression
+        self.assertIn("crop=w='iw/(", fc)                # animated centered crop
+
+    def test_broll_overlay_added_as_input(self):
+        from vibecut.render import build_ffmpeg_args
+        with tempfile.TemporaryDirectory() as d:
+            clip = os.path.join(d, "welcome_broll.mp4")
+            open(clip, "wb").write(b"\x00")  # a real (dummy) file so it isn't skipped
+            lib = [{"id": "bw", "url": clip, "duration": 2.0, "tags": ["welcome"]}]
+            model, _ = apply_plan(RulesProvider().plan("add b-roll"), self.a, media_library=lib)
+            args = build_ffmpeg_args(model, self.a.source_url, "out.mp4")
+            self.assertIn(clip, args)                      # b-roll added as an extra input
+            fc = args[args.index("-filter_complex") + 1]
+            self.assertIn("overlay=enable='between(t,", fc)  # timed cutaway
+
 
 class TestReVibe(unittest.TestCase):
     def setUp(self):

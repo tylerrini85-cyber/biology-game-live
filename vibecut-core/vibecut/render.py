@@ -81,22 +81,48 @@ def build_ass(captions: Captions, width: int = 1080, height: int = 1920) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _filtergraph(model: EditModel, ass_path: str) -> str:
-    """Build the FFmpeg -filter_complex: trim kept ranges, concat, reframe,
-    burn captions, and apply the audio chain (loudness/denoise)."""
-    vt = model.video_track()
-    at = model.audio_track()
+def _zoom_expr(vt) -> str | None:
+    """Build an FFmpeg time-expression for the punch-in zoom factor Z(t).
+
+    Each punch-in is 3 keyframes (t0:1.0, t0+0.15:max, t0+dur:1.0). We turn
+    them into a sum of non-overlapping triangular ramps; Z defaults to 1.0.
+    Commas are safe because the expression sits inside single-quoted options.
+    """
+    tf = next((f for f in vt.filters if f.type == "transform"), None)
+    if not tf:
+        return None
+    kf = tf.keyframes.get("scale", [])
+    terms = []
+    for i in range(0, len(kf) - 2, 3):
+        a, b, c = kf[i].t, kf[i + 1].t, kf[i + 2].t
+        peak = kf[i + 1].v - 1.0
+        if b - a <= 0 or c - b <= 0 or peak <= 0:
+            continue
+        up = f"between(t,{a:.3f},{b:.3f})*((t-{a:.3f})/{b - a:.3f})"
+        dn = f"between(t,{b:.3f},{c:.3f})*(({c:.3f}-t)/{c - b:.3f})"
+        terms.append(f"{peak:.3f}*({up}+{dn})")
+    return "1+" + "+".join(terms) if terms else None
+
+
+def _broll_url(clip) -> str:
+    for e in clip.effects:
+        if e.type == "broll_overlay":
+            return e.params.get("url", "")
+    return ""
+
+
+def _build(model: EditModel, ass_path: str):
+    """Return (filter_complex, broll_input_paths, skipped_broll)."""
+    vt, at = model.video_track(), model.audio_track()
+    W, H = model.profile.width, model.profile.height
     parts: list[str] = []
     n = len(vt.clips)
     for i, c in enumerate(vt.clips):
-        parts.append(f"[0:v]trim=start={c.src_in:.3f}:end={c.src_out:.3f},"
-                     f"setpts=PTS-STARTPTS[v{i}]")
+        parts.append(f"[0:v]trim=start={c.src_in:.3f}:end={c.src_out:.3f},setpts=PTS-STARTPTS[v{i}]")
     for i, c in enumerate(at.clips):
-        parts.append(f"[0:a]atrim=start={c.src_in:.3f}:end={c.src_out:.3f},"
-                     f"asetpts=PTS-STARTPTS[a{i}]")
+        parts.append(f"[0:a]atrim=start={c.src_in:.3f}:end={c.src_out:.3f},asetpts=PTS-STARTPTS[a{i}]")
     parts.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[vc][ac]")
 
-    # audio chain
     afilters = []
     for f in at.filters:
         if f.type == "loudnorm":
@@ -106,45 +132,66 @@ def _filtergraph(model: EditModel, ass_path: str) -> str:
             afilters.append("anlmdn")  # stand-in; real build runs DeepFilterNet3
     parts.append("[ac]" + ",".join(afilters or ["anull"]) + "[aout]")
 
-    # reframe (real center-crop + scale to the target aspect) then burn captions
+    reframe = any(f.type == "auto_reframe" for f in vt.filters)
+    zoom = _zoom_expr(vt)
+    broll_clips = next((t.clips for t in model.tracks if t.id == "V2"), [])
+    existing = [c for c in broll_clips if os.path.exists(_broll_url(c))]
+    skipped = len(broll_clips) - len(existing)
+    effects = reframe or zoom or existing
+
     vlabel = "vc"
-    if any(f.type == "auto_reframe" for f in vt.filters):
-        w, h = model.profile.width, model.profile.height
-        parts.append(f"[vc]crop='min(iw,ih*{w}/{h})':'min(ih,iw*{h}/{w})',"
-                     f"scale={w}:{h},setsar=1[vr]")
+    if reframe:  # center-crop to target aspect, normalize to WxH
+        parts.append(f"[vc]crop='min(iw,ih*{W}/{H})':'min(ih,iw*{H}/{W})',"
+                     f"scale={W}:{H},setsar=1[vr]")
         vlabel = "vr"
+    elif effects:  # normalize resolution so zoom/overlays line up
+        parts.append(f"[vc]scale={W}:{H},setsar=1[vr]")
+        vlabel = "vr"
+
+    if zoom:  # time-based punch-in: crop a centered, shrinking window, scale back
+        parts.append(f"[{vlabel}]crop=w='iw/({zoom})':h='ih/({zoom})':"
+                     f"x='(iw-ow)/2':y='(ih-oh)/2',scale={W}:{H}[vz]")
+        vlabel = "vz"
+
+    broll_paths = []
+    for idx, c in enumerate(existing):  # full-frame cutaways during their window
+        s = c.timeline_start
+        dur = c.src_out - c.src_in
+        in_i = 1 + idx
+        parts.append(f"[{in_i}:v]trim=0:{dur:.3f},setpts=PTS-STARTPTS+{s:.3f}/TB,"
+                     f"scale={W}:{H}[bv{idx}]")
+        parts.append(f"[{vlabel}][bv{idx}]overlay=enable='between(t,{s:.3f},{s + dur:.3f})':"
+                     f"eof_action=pass[ov{idx}]")
+        vlabel = f"ov{idx}"
+        broll_paths.append(_broll_url(c))
+
     parts.append(f"[{vlabel}]ass={ass_path}[vout]")
-    return ";".join(parts)
+    return ";".join(parts), broll_paths, skipped
 
 
 def build_ffmpeg_args(model: EditModel, src_url: str, out_path: str,
                       ass_path: str = "captions.ass", encoder: str = "mac") -> list[str]:
     """The export command as an argv list (safe for subprocess)."""
     enc = HW_ENCODERS.get(encoder, HW_ENCODERS["mac"])
-    return ["ffmpeg", "-y", "-i", src_url,
-            "-filter_complex", _filtergraph(model, ass_path),
-            "-map", "[vout]", "-map", "[aout]",
-            "-c:v", enc, "-b:v", "12M", "-c:a", "aac", "-b:a", "192k", out_path]
-
-
-def _notes(model: EditModel) -> list[str]:
-    vt = model.video_track()
-    notes = []
-    if any(f.type == "transform" for f in vt.filters):
-        notes.append("# note: punch-in zoom is applied by the in-app GPU compositor")
-    bt = next((t for t in model.tracks if t.id == "V2"), None)
-    if bt and bt.clips:
-        notes.append(f"# note: {len(bt.clips)} b-roll overlays are composited in-app")
-    return notes
+    fc, broll_paths, _ = _build(model, ass_path)
+    args = ["ffmpeg", "-y", "-i", src_url]
+    for p in broll_paths:
+        args += ["-i", p]
+    args += ["-filter_complex", fc, "-map", "[vout]", "-map", "[aout]",
+             "-c:v", enc, "-b:v", "12M", "-c:a", "aac", "-b:a", "192k", out_path]
+    return args
 
 
 def build_ffmpeg_command(model: EditModel, src_url: str, out_path: str,
                          ass_path: str = "captions.ass", encoder: str = "mac") -> str:
-    """Human-readable, copy-pasteable export command (cuts + reframe + captions
-    + audio). Hardware encoders only."""
+    """Human-readable, copy-pasteable export command. Bakes in cuts, reframe,
+    punch-in zoom, b-roll overlays, captions, and audio. Hardware encoders only."""
     cmd = " ".join(shlex.quote(a) for a in
                    build_ffmpeg_args(model, src_url, out_path, ass_path, encoder))
-    notes = _notes(model)
+    _, _, skipped = _build(model, ass_path)
+    notes = []
+    if skipped:
+        notes.append(f"# note: {skipped} suggested b-roll clip(s) skipped (file not found on disk)")
     return "\n".join(notes + [cmd]) if notes else cmd
 
 

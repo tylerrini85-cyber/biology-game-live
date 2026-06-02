@@ -76,14 +76,17 @@ python3 -m vibecut.cli "punchy under 45s, vertical for tiktok, bold captions" \
         --analysis analysis.json --render my_edit.mp4
 ```
 
-The deterministic export (cuts, vertical reframe, captions, loudness) is done
-by FFmpeg with **hardware encoders only**. Time-varying effects (punch-in zoom,
-b-roll overlays) are baked in by the desktop app's GPU compositor.
+The FFmpeg export now bakes in the **full edit**: cuts, vertical reframe,
+**animated punch-in zooms** (time-based crop+scale), **b-roll cutaways**
+(overlaid from your own media at the right moments), burned-in captions, and
+loudness — **hardware encoders only**. B-roll clips whose files aren't found on
+disk are skipped with a note (so a missing file never breaks the render). The
+desktop app adds live playback + GPU-accelerated versions of the same effects.
 
 ## Test it
 
 ```bash
-python3 -m unittest discover -s tests -v   # 40 tests, ~0.04s
+python3 -m unittest discover -s tests -v   # 42 tests, ~0.04s
 ```
 
 Every run also prints an **ASCII timeline** of the original footage so you can
