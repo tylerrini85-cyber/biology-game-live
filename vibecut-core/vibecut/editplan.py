@@ -37,7 +37,10 @@ OP_SPEC: dict[str, dict] = {
                            "tp": (-1.5, -9.0, 0.0),
                            "lra": (11.0, 1.0, 20.0)},
     "enhance_speech":    {"strength": (0.8, 0.0, 1.0)},
+    "suggest_broll":     {"density": ("medium", None, None), "query": ("auto", None, None)},
 }
+
+DENSITY = ["low", "medium", "high"]
 
 CAPTION_STYLES = ["minimal", "bold-karaoke", "lower-third", "hype"]
 
@@ -78,6 +81,8 @@ def _clamp(op: str, params: dict) -> dict:
         out["target_aspect"] = "9:16"
     if op == "add_captions" and out["style"] not in CAPTION_STYLES:
         out["style"] = "minimal"
+    if op == "suggest_broll" and out["density"] not in DENSITY:
+        out["density"] = "medium"
     return out
 
 

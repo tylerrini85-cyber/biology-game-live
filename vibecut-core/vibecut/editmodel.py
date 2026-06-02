@@ -101,6 +101,14 @@ class EditModel:
         self.tracks.append(t)
         return t
 
+    def broll_track(self) -> Track:
+        for t in self.tracks:
+            if t.kind == "video" and t.id == "V2":
+                return t
+        t = Track(id="V2", kind="video")
+        self.tracks.append(t)
+        return t
+
     def audio_track(self) -> Track:
         for t in self.tracks:
             if t.kind == "audio":

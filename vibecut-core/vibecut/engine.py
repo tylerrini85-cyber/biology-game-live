@@ -167,6 +167,41 @@ def punch_in(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel,
     return count
 
 
+def suggest_broll(p: dict, a: AssetAnalysis, keep: KeepList, model: EditModel,
+                  library: list[dict], protect: list[tuple]) -> int:
+    """Retrieve matching clips from the user's OWN media (no generation).
+
+    Reference matcher: transcript keyword -> library item tags. The shipping
+    app swaps this for CLIP+FAISS semantic search over the same library; the
+    output (overlay clips on the B-track) is identical.
+    """
+    if not library:
+        model.notes.append("suggest_broll: no media library provided; skipped.")
+        return 0
+    gap = {"low": 8.0, "medium": 5.0, "high": 3.0}[p["density"]]
+    track = model.broll_track()
+    last = -1e9
+    count = 0
+    for w in _surviving_words(a, keep):
+        if _protected(w.mid, protect):
+            continue
+        tt = keep.map_to_timeline(w.start)
+        if tt is None or tt - last < gap:
+            continue
+        word = _norm(w.text)
+        match = next((m for m in library if word in {_norm(t) for t in m.get("tags", [])}), None)
+        if match:
+            dur = min(2.0, float(match.get("duration", 2.0)))
+            track.clips.append(Clip(id=f"b{count}", asset_id=match["id"], src_in=0.0,
+                                    src_out=dur, timeline_start=round(tt, 3), origin="vibe"))
+            track.clips[-1].effects.append(
+                Effect(type="broll_overlay", params={"url": match.get("url", ""),
+                                                     "matched_word": word}))
+            last = tt
+            count += 1
+    return count
+
+
 def auto_reframe(p: dict, a: AssetAnalysis, model: EditModel) -> None:
     asp = p["target_aspect"]
     w, h = _ASPECT_DIMS[asp]
@@ -200,7 +235,8 @@ def _locked_specs(prev: EditModel | None) -> list[Clip]:
 
 
 def apply_plan(plan: EditPlan, a: AssetAnalysis,
-               prev_model: EditModel | None = None) -> tuple[EditModel, dict]:
+               prev_model: EditModel | None = None,
+               media_library: list[dict] | None = None) -> tuple[EditModel, dict]:
     """Run a validated plan against cached analysis -> (EditModel, report).
 
     If `prev_model` is given (a RE-VIBE), source ranges covered by *locked*
@@ -276,6 +312,9 @@ def apply_plan(plan: EditPlan, a: AssetAnalysis,
     if "punch_in" in params:
         n = punch_in(params["punch_in"], a, keep, model, protect)
         report["ops"].append({"punch_in": {"zooms": n}})
+    if "suggest_broll" in params:
+        n = suggest_broll(params["suggest_broll"], a, keep, model, media_library or [], protect)
+        report["ops"].append({"suggest_broll": {"clips": n}})
     if "auto_reframe" in params:
         auto_reframe(params["auto_reframe"], a, model)
         report["ops"].append({"auto_reframe": params["auto_reframe"]["target_aspect"]})

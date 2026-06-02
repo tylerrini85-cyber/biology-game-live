@@ -69,7 +69,7 @@ produced by faster-whisper / Silero VAD / PySceneDetect behind the same schema.
 ## Test it
 
 ```bash
-python3 -m unittest discover -s tests -v   # 31 tests, ~0.02s
+python3 -m unittest discover -s tests -v   # 37 tests, ~0.04s
 ```
 
 Every run also prints an **ASCII timeline** of the original footage so you can
@@ -112,8 +112,9 @@ This is only the **edit logic**. In the shipping desktop app (Spec §4–5):
 ## Design decisions baked in
 
 - **No external APIs required** — rules parser runs offline; Ollama is opt-in.
-- **No generative video** — `suggest_broll` (roadmap) retrieves the user's own
-  media via CLIP+FAISS; nothing is synthesized.
+- **No generative video** — `suggest_broll` retrieves the user's own media
+  (keyword match now; CLIP+FAISS semantic search later via `--media-library`);
+  nothing is ever synthesized.
 - **Hardware encoders only** — no software x264/x265, avoiding GPL/codec
   licensing (keeps the product license-clean / closed-capable).
 - **Untrusted-plan safety** — constrained decoding guarantees structure;
@@ -126,5 +127,8 @@ This is only the **edit logic**. In the shipping desktop app (Spec §4–5):
   also respect shot/scene boundaries so cuts never land mid-action.
 - **Per-clip captions on lock.** Captions regenerate globally on re-vibe; a
   locked clip could optionally retain its own caption styling.
+- **Semantic b-roll.** `suggest_broll` matches transcript keywords to your
+  library tags today; upgrade to CLIP+FAISS embeddings for "find the clip that
+  *looks* like this" over untagged footage.
 - **Real analysis layer.** Swap the sample JSON for live Whisper + Silero VAD
   + PySceneDetect output (the next sidecar to build).

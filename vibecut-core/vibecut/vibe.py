@@ -84,6 +84,11 @@ class RulesProvider:
         else:
             aspect = "16:9"
 
+        # ---- b-roll (retrieved from the user's own library; never generated)
+        if any(k in t for k in ("b-roll", "broll", "b roll", "cutaway", "cutaways",
+                                "add visuals", "stock footage")):
+            ops.setdefault("suggest_broll", {})
+
         # ---- audio
         if any(k in t for k in ("enhance", "clean audio", "denoise", "noise", "clarity")):
             ops.setdefault("enhance_speech", {})
@@ -103,6 +108,8 @@ class RulesProvider:
         if toggles.get("reframe") is False:
             ops.pop("auto_reframe", None)
             aspect = "16:9"
+        if toggles.get("broll") is False:
+            ops.pop("suggest_broll", None)
         if toggles.get("enhance") is True:
             ops.setdefault("enhance_speech", {})
 

@@ -174,6 +174,36 @@ class TestEngine(unittest.TestCase):
         self.assertTrue(transforms and transforms[0].keyframes.get("scale"))
 
 
+class TestBroll(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+        self.library = [
+            {"id": "b_growth", "url": "/b/g.mov", "duration": 4.0,
+             "tags": ["important", "biggest", "works"]},
+            {"id": "b_mistake", "url": "/b/m.mov", "duration": 3.0,
+             "tags": ["mistake", "give"]},
+        ]
+
+    def test_broll_matches_keywords_from_own_library(self):
+        plan = RulesProvider().plan("add some b-roll and captions")
+        self.assertTrue(plan.has("suggest_broll"))
+        model, rep = apply_plan(plan, self.a, media_library=self.library)
+        bt = model.broll_track()
+        self.assertTrue(bt.clips, "should place at least one b-roll overlay")
+        # placed clips reference the user's own library assets, not generated ones
+        self.assertTrue(all(c.asset_id in ("b_growth", "b_mistake") for c in bt.clips))
+
+    def test_no_library_is_safe(self):
+        plan = RulesProvider().plan("add b-roll")
+        model, rep = apply_plan(plan, self.a, media_library=None)
+        self.assertEqual(model.broll_track().clips, [])
+        self.assertTrue(any("media library" in n for n in model.notes))
+
+    def test_broll_toggle_off(self):
+        plan = RulesProvider().plan("add b-roll", toggles={"broll": False})
+        self.assertFalse(plan.has("suggest_broll"))
+
+
 class TestRender(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)

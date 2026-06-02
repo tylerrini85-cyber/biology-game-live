@@ -29,13 +29,20 @@ _DEFAULT_ANALYSIS = os.path.join(_HERE, "..", "samples", "sample_analysis.json")
 def run(prompt: str, analysis_path: str, out_path: str, ass_path: str,
         encoder: str, toggles: dict, use_llm: bool, model: str,
         from_project: str | None = None, save_project: str | None = None,
-        lock_clips: list[int] | None = None, html_path: str | None = None) -> dict:
+        lock_clips: list[int] | None = None, html_path: str | None = None,
+        media_library_path: str | None = None) -> dict:
     analysis = AssetAnalysis.load(analysis_path)
     provider = make_provider(use_llm=use_llm, model=model) if use_llm else make_provider()
     plan = provider.plan(prompt, toggles)
 
+    library = None
+    if media_library_path:
+        with open(media_library_path, "r", encoding="utf-8") as fh:
+            library = json.load(fh)
+
     prev_model = EditModel.load(from_project) if from_project else None
-    edit_model, report = apply_plan(plan, analysis, prev_model=prev_model)
+    edit_model, report = apply_plan(plan, analysis, prev_model=prev_model,
+                                    media_library=library)
 
     # optionally lock clips by index (so a later --revibe protects them)
     for idx in (lock_clips or []):
@@ -77,6 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--lock-clip", type=int, action="append", default=[], metavar="N",
                     help="lock video clip #N before saving (repeatable)")
     ap.add_argument("--html", metavar="PATH", help="write a visual HTML edit report")
+    ap.add_argument("--media-library", metavar="PATH", help="JSON of your own clips for b-roll suggestions")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON only")
     args = ap.parse_args(argv)
 
@@ -89,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     res = run(args.prompt, args.analysis, args.out, args.ass, args.encoder,
               toggles, args.llm, args.model, from_project=args.revibe,
               save_project=args.save_project, lock_clips=args.lock_clip,
-              html_path=args.html)
+              html_path=args.html, media_library_path=args.media_library)
 
     if args.json:
         out = {k: v for k, v in res.items() if k != "edit_model"}

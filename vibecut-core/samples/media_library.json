@@ -1,0 +1,6 @@
+[
+  {"id": "broll_growth",     "url": "/broll/growth_chart.mov",  "duration": 4.0, "tags": ["important", "biggest", "works", "absolutely"]},
+  {"id": "broll_mistake",    "url": "/broll/facepalm.mov",      "duration": 3.5, "tags": ["mistake", "give", "up", "early"]},
+  {"id": "broll_motivation", "url": "/broll/sunrise_run.mov",   "duration": 5.0, "tags": ["remember", "keep", "going", "promise"]},
+  {"id": "broll_welcome",    "url": "/broll/studio_wide.mov",   "duration": 3.0, "tags": ["welcome", "today", "channel"]}
+]
