@@ -65,7 +65,7 @@ function esc(s){ var d=document.createElement('div'); d.textContent=s; return d.
 
 function boot(){
   var box=$('#toggles');
-  OPTS.forEach(function(o){ var on=(o[0]==='captions'||o[0]==='zooms');
+  OPTS.forEach(function(o){ var on=(o[0]==='captions');  // full-frame by default; zoom/reframe are opt-in
     box.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="t_'+o[0]+'"'+(on?' checked':'')+'> '+o[1]+'</label>'); });
   $('#video').addEventListener('change', loadVideo);
   $('#srt').addEventListener('change', loadSRT);
@@ -158,7 +158,7 @@ function render(){
       +'<button class="ghost sm" onclick="toggleLock('+i+')">'+(c.locked?'🔒':'🔓')+'</button>'
       +'<button class="ghost sm" onclick="delClip('+i+')">✕</button></div>'; }).join('');
   // persistent color preview filter (look + manual adjustments)
-  $('#vwrap').style.filter=previewFilter(m);
+  var vw=$('#vwrap'); if(vw){ vw.style.filter=previewFilter(m); if(!playing) vw.style.transform='scale(1)'; }
   // plan + stats
   $('#plan').innerHTML=rep.ops.map(function(o){return '<span class="chip">'+o[0]+'</span>';}).join('');
   var pct=rep.original?100*rep.final/rep.original:0;
@@ -369,7 +369,7 @@ TEMPLATE = """<!doctype html>
         <input type="file" id="srt" accept=".srt"> <span class="muted" id="sstatus">using built-in sample</span></div>
     </div>
     <div style="margin-top:14px"><div class="label">3 &middot; Describe the edit</div>
-      <input type="text" id="prompt" value="punchy, under 45 seconds, bold captions for tiktok, clean audio"></div>
+      <input type="text" id="prompt" value="clean it up and add captions"></div>
     <div class="toggles" id="toggles"></div>
     <div class="toggles" style="margin-top:6px">
       <label>Look <select id="look"><option>none</option><option>warm</option><option>cool</option><option>vivid</option><option>bw</option><option>film</option><option>bright</option></select></label>
