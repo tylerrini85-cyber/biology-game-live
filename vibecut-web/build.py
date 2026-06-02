@@ -62,7 +62,7 @@ UI = """
     var plan = VibeCut.planFromText(prompt, toggles);
     var r = VibeCut.edit(a, plan, LIB);
     qs('#result').innerHTML = renderResult(prompt, r.model, r.report, a);
-    qs('#result').scrollIntoView({behavior:'smooth', block:'start'});
+    if (qs('#result').scrollIntoView) qs('#result').scrollIntoView({behavior:'smooth', block:'start'});
   }
 
   function renderResult(prompt, model, report, a) {
