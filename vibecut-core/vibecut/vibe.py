@@ -115,39 +115,60 @@ class RulesProvider:
 
 
 class OllamaProvider:
-    """Local LLM provider using Ollama's constrained-JSON output."""
+    """Local LLM provider using Ollama's constrained-JSON output.
+
+    The `format` parameter is set to our JSON Schema, so Ollama constrains
+    decoding and the model *cannot* emit anything outside the schema. A
+    `transport` can be injected for testing (default uses stdlib urllib).
+    """
 
     name = "ollama"
 
-    def __init__(self, model: str = "qwen2.5:7b", host: str = "http://localhost:11434"):
+    SYSTEM = (
+        "You translate a video editor's request into an edit plan as JSON. "
+        "Use ONLY these operations; never invent new ones: cut_silence, "
+        "remove_fillers, target_duration, punch_in, auto_reframe, add_captions, "
+        "normalize_loudness, enhance_speech. Pick parameters that match the "
+        "requested vibe (punchy -> frequent strong zooms; calm -> few subtle ones). "
+        'Example: input "punchy, under 60s, bold captions for tiktok" -> '
+        '{"target_duration_s":60,"aspect":"9:16","ops":['
+        '{"op":"cut_silence","params":{}},{"op":"remove_fillers","params":{}},'
+        '{"op":"punch_in","params":{"frequency":"high","max_scale":1.3}},'
+        '{"op":"add_captions","params":{"style":"bold-karaoke"}},'
+        '{"op":"auto_reframe","params":{"target_aspect":"9:16"}},'
+        '{"op":"target_duration","params":{"max_seconds":60}}]}'
+    )
+
+    def __init__(self, model: str = "qwen2.5:7b", host: str = "http://localhost:11434",
+                 transport=None):
         self.model = model
-        self.host = host
+        self.url = f"{host}/api/generate"
+        self._transport = transport or self._http
 
-    def plan(self, text: str, toggles: dict | None = None) -> EditPlan:
-        import urllib.request  # stdlib; only used on this path
-
-        system = (
-            "You translate a video editor's request into an edit plan. "
-            "Use ONLY the allowed operations. Do not invent operations. "
-            "Choose parameters that match the requested vibe. "
-            "Allowed ops: cut_silence, remove_fillers, target_duration, "
-            "punch_in, auto_reframe, add_captions, normalize_loudness, enhance_speech."
-        )
+    def _payload(self, text: str, toggles: dict | None) -> dict:
+        system = self.SYSTEM
         if toggles:
-            system += f" Honor these UI toggles (override the text): {json.dumps(toggles)}."
-        body = json.dumps({
+            system += f" Honor these UI toggles (they override the text): {json.dumps(toggles)}."
+        return {
             "model": self.model,
             "system": system,
             "prompt": text,
             "stream": False,
-            "format": EDIT_PLAN_JSON_SCHEMA,  # <- hard structural guarantee
+            "format": EDIT_PLAN_JSON_SCHEMA,   # <- hard structural guarantee
             "options": {"temperature": 0.2},
-        }).encode()
-        req = urllib.request.Request(f"{self.host}/api/generate", data=body,
+        }
+
+    @staticmethod
+    def _http(url: str, payload: dict) -> dict:
+        import urllib.request  # stdlib; only used on this path
+        req = urllib.request.Request(url, data=json.dumps(payload).encode(),
                                      headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=120) as resp:
-            payload = json.loads(resp.read())
-        return validate(json.loads(payload["response"]))
+            return json.loads(resp.read())
+
+    def plan(self, text: str, toggles: dict | None = None) -> EditPlan:
+        response = self._transport(self.url, self._payload(text, toggles))
+        return validate(json.loads(response["response"]))
 
 
 def make_provider(use_llm: bool = False, **kw) -> object:

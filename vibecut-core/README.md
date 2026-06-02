@@ -29,7 +29,8 @@ and a `captions.ass` karaoke file.
 
 Useful flags: `--no-zooms`, `--no-captions`, `--encoder {mac,nvidia,intel,amd}`,
 `--analysis path.json`, `--json`. Use `--llm` to route intent through a local
-Ollama model instead of the offline rules parser.
+Ollama model instead of the offline rules parser — see
+[docs/OLLAMA-SETUP.md](docs/OLLAMA-SETUP.md) for the one-time setup.
 
 ### Re-vibe with lock-to-protect (Spec §3)
 

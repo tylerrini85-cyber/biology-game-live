@@ -15,7 +15,7 @@ from vibecut.editplan import validate, to_plain
 from vibecut.engine import apply_plan
 from vibecut.ranges import KeepList, subtract, complement
 from vibecut.render import build_ass, build_ffmpeg_command
-from vibecut.vibe import RulesProvider
+from vibecut.vibe import RulesProvider, OllamaProvider
 
 SAMPLE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                       "samples", "sample_analysis.json")
@@ -83,6 +83,45 @@ class TestVibe(unittest.TestCase):
         plan = self.p.plan("clean it up")
         for op in ("cut_silence", "remove_fillers", "add_captions"):
             self.assertTrue(plan.has(op), op)
+
+
+class TestOllamaProvider(unittest.TestCase):
+    """Verify the LLM request shape + response parsing without a live server."""
+
+    def test_payload_uses_constrained_schema(self):
+        captured = {}
+
+        def fake_transport(url, payload):
+            captured["url"] = url
+            captured["payload"] = payload
+            return {"response": '{"ops":[{"op":"cut_silence","params":{}}]}'}
+
+        prov = OllamaProvider(model="qwen2.5:7b", transport=fake_transport)
+        prov.plan("tighten it up", toggles={"zooms": False})
+
+        self.assertTrue(captured["url"].endswith("/api/generate"))
+        p = captured["payload"]
+        self.assertEqual(p["model"], "qwen2.5:7b")
+        self.assertFalse(p["stream"])
+        # the JSON schema is sent as `format` -> Ollama constrains decoding
+        self.assertEqual(p["format"]["properties"]["ops"]["items"]["properties"]
+                         ["op"]["enum"][0], "cut_silence")
+        self.assertIn("toggles", p["system"])  # toggles forwarded to the model
+
+    def test_parses_model_response_into_valid_plan(self):
+        model_json = ('{"target_duration_s":60,"aspect":"9:16","ops":['
+                      '{"op":"cut_silence","params":{"min_duration_s":0.4}},'
+                      '{"op":"delete_universe","params":{}},'      # bogus -> dropped
+                      '{"op":"punch_in","params":{"max_scale":99}}]}')  # clamped
+        prov = OllamaProvider(transport=lambda url, payload: {"response": model_json})
+        plan = prov.plan("make it punchy and short for reels")
+        ops = [o.op for o in plan.ops]
+        self.assertIn("cut_silence", ops)
+        self.assertIn("punch_in", ops)
+        self.assertNotIn("delete_universe", ops)              # validate() dropped it
+        self.assertEqual(plan.aspect, "9:16")
+        scale = next(o for o in plan.ops if o.op == "punch_in").params["max_scale"]
+        self.assertLessEqual(scale, 2.0)                       # validate() clamped it
 
 
 class TestEngine(unittest.TestCase):
