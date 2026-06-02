@@ -19,8 +19,8 @@
   button.sm{padding:3px 8px;font-size:12px;font-weight:600}
   .preview{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center}
   .preview.vert{aspect-ratio:9/16;max-height:520px;margin:0 auto}
-  #vwrap{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transition:transform .05s linear;transform-origin:center center}
-  #video{width:100%;height:100%;object-fit:contain;background:#000}
+  #vwrap{position:absolute;inset:0;transition:transform .05s linear;transform-origin:center center}
+  #video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
   #placeholder{color:#444;font-size:14px;text-align:center;padding:20px}
   #broll{position:absolute;inset:0;background:#101418 center/cover no-repeat;display:none;align-items:center;justify-content:center;color:var(--accent);font-weight:700}
   #caps{position:absolute;left:0;right:0;bottom:9%;text-align:center;padding:0 8%;pointer-events:none}
@@ -142,7 +142,7 @@
     <pre id="ffmpeg"></pre>
   </div>
 
-  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-3</b></div>
+  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-4 (no zoom)</b></div>
 </div>
 <script>/* VibeCut browser engine — a faithful JS port of vibecut-core's logic so the
  * whole vibe -> plan -> edit -> preview loop runs entirely in the browser
