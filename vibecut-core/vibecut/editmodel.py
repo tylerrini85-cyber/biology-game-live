@@ -97,6 +97,8 @@ class EditModel:
     titles: list[dict] = field(default_factory=list)  # [{text,start,dur,kind}]
     music: dict | None = None  # {url, gain, duck, duck_amount}
     voice_gain: float = 1.0    # voice volume multiplier
+    color_adjust: dict | None = None  # {brightness, contrast, saturation, temperature}
+    lut: str | None = None     # path to a custom .cube LUT
     notes: list[str] = field(default_factory=list)  # engine warnings / decisions
 
     def video_track(self) -> Track:
@@ -160,7 +162,8 @@ class EditModel:
                             events=events)
         return cls(profile=prof, tracks=tracks, captions=captions,
                    titles=list(d.get("titles", [])), music=d.get("music"),
-                   voice_gain=d.get("voice_gain", 1.0), notes=list(d.get("notes", [])))
+                   voice_gain=d.get("voice_gain", 1.0), color_adjust=d.get("color_adjust"),
+                   lut=d.get("lut"), notes=list(d.get("notes", [])))
 
     def save(self, path: str) -> None:
         with open(path, "w", encoding="utf-8") as fh:

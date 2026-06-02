@@ -266,6 +266,19 @@ def _build(model: EditModel, ass_path: str):
     if cl and LOOK_FILTERS.get(cl.params.get("look")):
         parts.append(f"[{vlabel}]{LOOK_FILTERS[cl.params['look']]}[vcol]")
         vlabel = "vcol"
+    # manual color adjustments (brightness/contrast/saturation/temperature)
+    ca = getattr(model, "color_adjust", None)
+    if ca:
+        b, c, s = float(ca.get("brightness", 0)), float(ca.get("contrast", 1)), float(ca.get("saturation", 1))
+        t = float(ca.get("temperature", 0))
+        parts.append(f"[{vlabel}]eq=brightness={b:.3f}:contrast={c:.3f}:saturation={s:.3f},"
+                     f"colorbalance=rs={t * 0.3:.3f}:bs={-t * 0.3:.3f}[veq]")
+        vlabel = "veq"
+    # custom .cube LUT
+    lut = getattr(model, "lut", None)
+    if lut and os.path.exists(lut):
+        parts.append(f"[{vlabel}]lut3d='{lut}'[vlut]")
+        vlabel = "vlut"
 
     # burn captions
     parts.append(f"[{vlabel}]ass={ass_path}[vcap]")

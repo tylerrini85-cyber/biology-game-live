@@ -278,6 +278,24 @@ class TestSpeedTitleAudio(unittest.TestCase):
         self.assertIn("afftdn", args[args.index("-filter_complex") + 1])
 
 
+class TestColorAdjust(unittest.TestCase):
+    def setUp(self):
+        self.a = AssetAnalysis.load(SAMPLE)
+
+    def test_color_adjust_and_lut_baked(self):
+        from vibecut.render import build_ffmpeg_args
+        with tempfile.TemporaryDirectory() as d:
+            lut = os.path.join(d, "look.cube"); open(lut, "w").write("# lut")
+            model, _ = apply_plan(RulesProvider().plan("bold captions"), self.a)
+            model.color_adjust = {"brightness": 0.05, "contrast": 1.1, "saturation": 1.2, "temperature": 0.5}
+            model.lut = lut
+            fc = build_ffmpeg_args(model, self.a.source_url, "o.mp4")[
+                build_ffmpeg_args(model, self.a.source_url, "o.mp4").index("-filter_complex") + 1]
+            self.assertIn("eq=brightness=0.050:contrast=1.100:saturation=1.200", fc)
+            self.assertIn("colorbalance=rs=0.150", fc)
+            self.assertIn("lut3d=", fc)
+
+
 class TestAudioMixer(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)

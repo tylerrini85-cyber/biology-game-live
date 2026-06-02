@@ -81,6 +81,8 @@ window.addEventListener('DOMContentLoaded', function(){
   $('#loadbtn').addEventListener('click', function(){ $('#loadproj').click(); });
   $('#loadproj').addEventListener('change', loadProject);
   ['#voicegain','#musicgain','#duckamt'].forEach(function(id){ if($(id)) $(id).addEventListener('input', audioMix); });
+  ['#cb','#cc','#cs','#ct'].forEach(function(id){ if($(id)) $(id).addEventListener('input', colorAdjust); });
+  if($('#lutfile')) $('#lutfile').addEventListener('change', loadLut);
   doVibe(null);  // initial edit on the sample
 });
 
@@ -142,8 +144,8 @@ function render(){
       +'<button class="ghost sm" title="split" onclick="splitC('+i+')">⤲</button>'
       +'<button class="ghost sm" onclick="toggleLock('+i+')">'+(c.locked?'🔒':'🔓')+'</button>'
       +'<button class="ghost sm" onclick="delClip('+i+')">✕</button></div>'; }).join('');
-  // persistent color-look preview filter
-  $('#vwrap').style.filter=(m.colorLook && VibeCut.LOOK_CSS[m.colorLook])?VibeCut.LOOK_CSS[m.colorLook]:'none';
+  // persistent color preview filter (look + manual adjustments)
+  $('#vwrap').style.filter=previewFilter(m);
   // plan + stats
   $('#plan').innerHTML=rep.ops.map(function(o){return '<span class="chip">'+o[0]+'</span>';}).join('');
   var pct=rep.original?100*rep.final/rep.original:0;
@@ -167,6 +169,21 @@ function render(){
   updUndo();
 }
 function escAttr(s){ return String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;"); }
+function previewFilter(m){
+  var p=[];
+  if(m.colorLook && VibeCut.LOOK_CSS[m.colorLook]) p.push(VibeCut.LOOK_CSS[m.colorLook]);
+  if(m.color_adjust){ var ca=m.color_adjust;
+    p.push("brightness("+(1+(+ca.brightness||0)).toFixed(2)+")");
+    p.push("contrast("+(+ca.contrast||1).toFixed(2)+")");
+    p.push("saturate("+(+ca.saturation||1).toFixed(2)+")");
+    var t=+ca.temperature||0; if(t) p.push(t>0?("sepia("+(t*0.3).toFixed(2)+")"):("hue-rotate("+(t*20).toFixed(0)+"deg)")); }
+  return p.length?p.join(" "):"none";
+}
+function colorAdjust(){ if(!state.model) return;
+  state.model.color_adjust={brightness:parseFloat($('#cb').value),contrast:parseFloat($('#cc').value),saturation:parseFloat($('#cs').value),temperature:parseFloat($('#ct').value)};
+  $('#vwrap').style.filter=previewFilter(state.model);
+  $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); }
+function loadLut(e){ var f=e.target.files[0]; if(f && state.model){ state.model.lut=f.name; $('#ffmpeg').textContent=VibeCut.ffmpeg(state.model, state.analysis.source_url||'clip.mp4'); } }
 function audioMix(){
   if(!state.model) return;
   state.model.voice_gain=parseFloat($('#voicegain').value);
@@ -304,6 +321,13 @@ TEMPLATE = """<!doctype html>
       <label>Caption style <select id="capstyle"><option>minimal</option><option selected>bold-karaoke</option><option>hype</option><option>neon</option><option>clean</option><option>lower-third</option></select></label>
       <label><input type="checkbox" id="t_upper"> UPPERCASE</label>
       <label>Speed <select id="speed"><option>0.5</option><option selected>1</option><option>1.5</option><option>2</option></select></label>
+    </div>
+    <div class="toggles" style="margin-top:8px">
+      <label>Bright <input type="range" id="cb" min="-0.3" max="0.3" step="0.02" value="0"></label>
+      <label>Contrast <input type="range" id="cc" min="0.6" max="1.6" step="0.05" value="1"></label>
+      <label>Saturate <input type="range" id="cs" min="0" max="2" step="0.05" value="1"></label>
+      <label>Temp <input type="range" id="ct" min="-1" max="1" step="0.1" value="0"></label>
+      <label>LUT <input type="file" id="lutfile" accept=".cube"></label>
     </div>
     <div class="row" style="margin-top:10px">
       <div style="flex:1;min-width:180px"><div class="label">Intro title (optional)</div>

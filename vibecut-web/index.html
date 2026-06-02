@@ -528,6 +528,9 @@
       } else parts.push("[voicepre][mv]amix=inputs=2:duration=first:weights=1 1:normalize=0[aout]");
     }
     if (model.colorLook && LOOK_FILTERS[model.colorLook]) { parts.push("[" + vl + "]" + LOOK_FILTERS[model.colorLook] + "[vcol]"); vl = "vcol"; }
+    if (model.color_adjust) { var ca = model.color_adjust, tt = +ca.temperature || 0;
+      parts.push("[" + vl + "]eq=brightness=" + (+ca.brightness || 0).toFixed(3) + ":contrast=" + (+ca.contrast || 1).toFixed(3) + ":saturation=" + (+ca.saturation || 1).toFixed(3) + ",colorbalance=rs=" + (tt * 0.3).toFixed(3) + ":bs=" + (-tt * 0.3).toFixed(3) + "[veq]"); vl = "veq"; }
+    if (model.lut) { parts.push("[" + vl + "]lut3d='" + model.lut + "'[vlut]"); vl = "vlut"; }
     parts.push("[" + vl + "]ass=captions.ass[vcap]"); vl = "vcap";
     if (!overlap && model.transition) {
       var color = model.transition === "dip-to-white" ? "white" : "black";
