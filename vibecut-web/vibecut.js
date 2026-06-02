@@ -38,6 +38,31 @@
     }
     return o;
   }
+  function subtractAll(rng, holes) {
+    var pieces = [rng];
+    holes.forEach(function (h) {
+      var nx = []; pieces.forEach(function (p) { nx = nx.concat(subtract([p], h)); }); pieces = nx;
+    });
+    return pieces;
+  }
+  function splitAt(ranges, points) {
+    var out = [];
+    ranges.forEach(function (r) {
+      var cuts = points.filter(function (p) { return r[0] + EPS < p && p < r[1] - EPS; })
+                       .sort(function (x, y) { return x - y; });
+      var prev = r[0];
+      cuts.forEach(function (p) { out.push([prev, p]); prev = p; });
+      out.push([prev, r[1]]);
+    });
+    return out;
+  }
+  function protectedAt(t, protect) {
+    return protect.some(function (p) { return p[0] <= t && t <= p[1]; });
+  }
+  function safeCut(keep, rng, protect) {
+    (protect.length ? subtractAll(rng, protect) : [rng]).forEach(function (p) { keep.cut(p); });
+  }
+
   function KeepList(dur) { this.ranges = [[0, dur]]; }
   KeepList.prototype.cut = function (rng) {
     var nw = [];
@@ -131,33 +156,38 @@
     });
   }
 
-  function edit(analysis, plan, library) {
+  function edit(analysis, plan, library, prev) {
     var keep = new KeepList(analysis.duration);
     var words = analysis.words.map(function (w) {
       return { text: w.text, start: w.start, dur: w.dur, emphasis: w.emphasis || 0,
                mid: w.start + w.dur / 2, end: w.start + w.dur };
     });
-    var P = plan.ops, report = { original: analysis.duration, ops: [] };
+    var P = plan.ops, report = { original: analysis.duration, ops: [], revibe: !!prev };
+
+    // re-vibe: protect source ranges covered by LOCKED clips (Spec §3)
+    var locked = prev ? prev.clips.filter(function (c) { return c.locked; }) : [];
+    var protect = locked.map(function (c) { return [c.src_in, c.src_out]; });
+    if (locked.length) report.ops.push(["protect_locked", locked.length + " clips"]);
 
     if (P.cut_silence) {
       var md = P.cut_silence.min_duration_s != null ? P.cut_silence.min_duration_s : 0.5;
       var pad = P.cut_silence.padding_s != null ? P.cut_silence.padding_s : 0.12, n = 0;
       complement(analysis.speech, 0, analysis.duration).forEach(function (g) {
-        if (g[1] - g[0] > md) { var cs = g[0] + pad, ce = g[1] - pad; if (ce > cs) { keep.cut([cs, ce]); n++; } }
+        if (g[1] - g[0] > md) { var cs = g[0] + pad, ce = g[1] - pad; if (ce > cs) { safeCut(keep, [cs, ce], protect); n++; } }
       });
       report.ops.push(["cut_silence", n + " cut"]);
     }
     if (P.remove_fillers) {
       var lex = {}; (P.remove_fillers.lexicon || FILLERS).forEach(function (f) { lex[norm(f)] = 1; });
       var nf = 0;
-      words.forEach(function (w) { if (lex[norm(w.text)] && keep.contains(w.mid)) { keep.cut([w.start, w.end]); nf++; } });
+      words.forEach(function (w) {
+        if (lex[norm(w.text)] && keep.contains(w.mid) && !protectedAt(w.mid, protect)) { keep.cut([w.start, w.end]); nf++; }
+      });
       report.ops.push(["remove_fillers", nf + " cut"]);
     }
     var target = (P.target_duration && P.target_duration.max_seconds) || plan.target || null;
     if (target != null && keep.total() > target) {
-      // phrases are built from SURVIVING words, so removed fillers/silences
-      // split them into finer phrases (matches engine.py, avoids overshoot)
-      var survivors = words.filter(function (w) { return keep.contains(w.mid); });
+      var survivors = words.filter(function (w) { return keep.contains(w.mid) && !protectedAt(w.mid, protect); });
       var ph = phrases(survivors)
         .sort(function (a, b) { return (a.emphasis - b.emphasis) || ((a.end - a.start) - (b.end - b.start)); });
       var tp = 0;
@@ -167,57 +197,131 @@
       report.ops.push(["target_duration", "to " + target + "s"]);
     }
 
-    keep.ranges = bridge(keep.ranges, BRIDGE).filter(function (r) { return r[1] - r[0] >= MIN_SEG; });
+    keep.ranges = bridge(keep.ranges, BRIDGE).filter(function (r) {
+      return r[1] - r[0] >= MIN_SEG || protectedAt((r[0] + r[1]) / 2, protect);
+    });
+    if (protect.length) {
+      var pts = []; protect.forEach(function (p) { pts.push(p[0], p[1]); });
+      keep.ranges = splitAt(keep.ranges, pts);
+    }
 
-    var clips = keep.ranges.map(function (r) { return { src_in: r[0], src_out: r[1], locked: false }; });
-    var profile = { width: 1920, height: 1080 };
-    var model = { profile: profile, clips: clips, broll: [], notes: [],
-                  captions: { style: "minimal", highlight: "#FFE000", events: [] } };
+    // build clips with timeline positions; carry over locked hand-edits
+    var off = 0, clips = [];
+    keep.ranges.forEach(function (r) {
+      var lk = locked.find(function (c) { return Math.abs(c.src_in - r[0]) < 1e-3 && Math.abs(c.src_out - r[1]) < 1e-3; });
+      clips.push({ src_in: r[0], src_out: r[1], timeline_start: off, locked: !!lk });
+      off += r[1] - r[0];
+    });
+    var model = { profile: { width: 1920, height: 1080 }, clips: clips, broll: [], notes: [],
+                  zoomKeyframes: [], captions: { style: "minimal", highlight: "#FFE000", events: [] } };
 
-    if (P.add_captions) {
-      var style = P.add_captions.style || "minimal", maxw = 4;
-      var events = [], line = [];
-      function flush() { if (line.length) { events.push({ start: line[0].t, words: line.slice() }); line = []; } }
-      words.filter(function (w) { return keep.contains(w.mid); }).forEach(function (w) {
-        var tt = keep.mapTL(w.start); if (tt == null) return;
-        line.push({ w: w.text, t: tt, d: w.dur }); if (line.length >= maxw) flush();
-      });
-      flush();
-      model.captions = { style: style, highlight: "#FFE000", events: events };
-      report.ops.push(["add_captions", events.length + " events"]);
-    }
-    if (P.punch_in) {
-      var thr = FREQ[P.punch_in.frequency || "medium"], last = -1e9, z = 0;
-      words.filter(function (w) { return keep.contains(w.mid); }).forEach(function (w) {
-        if (w.emphasis < thr) return; var tt = keep.mapTL(w.start);
-        if (tt == null || tt - last < 2.0) return; last = tt; z++;
-      });
-      model.zooms = z; report.ops.push(["punch_in", z + " zooms"]);
-    }
-    if (P.suggest_broll) {
-      if (!library || !library.length) { model.notes.push("No media library provided."); }
-      else {
-        var lastb = -1e9;
-        words.filter(function (w) { return keep.contains(w.mid); }).forEach(function (w) {
-          var tt = keep.mapTL(w.start); if (tt == null || tt - lastb < 5.0) return;
-          var word = norm(w.text);
-          var m = library.find(function (it) { return (it.tags || []).map(norm).indexOf(word) >= 0; });
-          if (m) { model.broll.push({ asset_id: m.id, timeline_start: tt, matched: word }); lastb = tt; }
-        });
-        report.ops.push(["suggest_broll", model.broll.length + " clips"]);
-      }
-    }
-    if (P.auto_reframe) {
-      var d = DIMS[P.auto_reframe.target_aspect || "9:16"];
-      model.profile = { width: d[0], height: d[1] };
-      report.ops.push(["auto_reframe", P.auto_reframe.target_aspect || "9:16"]);
-      model.notes.push("Reframe pan/zoom is generated in-app from subject tracking.");
-    }
+    decorate(model, analysis, P, library, protect, report);
     if (P.normalize_loudness) report.ops.push(["normalize_loudness", "-16 LUFS"]);
     if (P.enhance_speech) report.ops.push(["enhance_speech", "on"]);
 
     report.final = clips.reduce(function (s, c) { return s + (c.src_out - c.src_in); }, 0);
     return { model: model, report: report };
+  }
+
+  // (re)compute captions, punch-in zooms, b-roll, reframe from model.clips.
+  // Called by edit() and again after manual edits (delete) so the preview stays
+  // consistent. Idempotent: resets these fields each call.
+  function decorate(model, analysis, P, library, protect, report) {
+    protect = protect || [];
+    var clips = model.clips;
+    var words = analysis.words.map(function (w) {
+      return { text: w.text, start: w.start, dur: w.dur, emphasis: w.emphasis || 0, mid: w.start + w.dur / 2, end: w.start + w.dur };
+    });
+    function mapTL(t) {
+      for (var k = 0; k < clips.length; k++) {
+        var c = clips[k];
+        if (t < c.src_in - EPS) return null;
+        if (t <= c.src_out + EPS) return c.timeline_start + (t - c.src_in);
+      }
+      return null;
+    }
+    function survivor(w) { return clips.some(function (c) { return c.src_in - EPS <= w.mid && w.mid <= c.src_out + EPS; }); }
+    function push(op, info) { if (report) report.ops.push([op, info]); }
+
+    model.captions = { style: "minimal", highlight: "#FFE000", events: [] };
+    model.zoomKeyframes = []; model.broll = [];
+
+    if (P.add_captions) {
+      var style = P.add_captions.style || "minimal", maxw = 4, events = [], line = [];
+      function flush() { if (line.length) { events.push({ start: line[0].t, end: line[line.length - 1].t + line[line.length - 1].d, words: line.slice() }); line = []; } }
+      words.filter(survivor).forEach(function (w) {
+        var tt = mapTL(w.start); if (tt == null) return;
+        line.push({ w: w.text, t: tt, st: w.start, d: w.dur }); if (line.length >= maxw) flush();
+      });
+      flush();
+      model.captions = { style: style, highlight: "#FFE000", events: events };
+      push("add_captions", events.length + " events");
+    }
+    if (P.punch_in) {
+      var thr = FREQ[P.punch_in.frequency || "medium"], maxs = P.punch_in.max_scale || 1.25, last = -1e9;
+      words.filter(survivor).forEach(function (w) {
+        if (w.emphasis < thr || protectedAt(w.mid, protect)) return;
+        var tt = mapTL(w.start); if (tt == null || tt - last < 2.0) return;
+        model.zoomKeyframes.push({ a: tt, b: tt + 0.15, c: tt + Math.max(0.3, w.dur), max: maxs });
+        last = tt;
+      });
+      push("punch_in", model.zoomKeyframes.length + " zooms");
+    }
+    if (P.suggest_broll) {
+      if (!library || !library.length) { model.notes.push("No media library provided."); }
+      else {
+        var lastb = -1e9;
+        words.filter(survivor).forEach(function (w) {
+          var tt = mapTL(w.start); if (tt == null || tt - lastb < 5.0) return;
+          var word = norm(w.text);
+          var m = library.find(function (it) { return (it.tags || []).map(norm).indexOf(word) >= 0; });
+          if (m) { model.broll.push({ asset_id: m.id, url: m.url || "", dur: Math.min(2.0, m.duration || 2.0), timeline_start: tt, matched: word }); lastb = tt; }
+        });
+        push("suggest_broll", model.broll.length + " clips");
+      }
+    }
+    if (P.auto_reframe) {
+      var d = DIMS[P.auto_reframe.target_aspect || "9:16"];
+      model.profile = { width: d[0], height: d[1] };
+      push("auto_reframe", P.auto_reframe.target_aspect || "9:16");
+    }
+  }
+
+  // recompute timeline_start after manual edits (delete/reorder)
+  function relayout(model) {
+    var off = 0;
+    model.clips.forEach(function (c) { c.timeline_start = off; off += c.src_out - c.src_in; });
+    return off;
+  }
+  function zoomScaleAt(model, tl) {  // live punch-in scale at timeline time tl
+    var z = 1.0;
+    (model.zoomKeyframes || []).forEach(function (k) {
+      if (tl >= k.a && tl <= k.b) z = Math.max(z, 1 + (k.max - 1) * (tl - k.a) / (k.b - k.a));
+      else if (tl > k.b && tl <= k.c) z = Math.max(z, 1 + (k.max - 1) * (k.c - tl) / (k.c - k.b));
+    });
+    return z;
+  }
+  // build analysis from an .srt (no audio): words spread per cue, default emphasis
+  function analysisFromSRT(srt, sourceUrl) {
+    var blocks = srt.replace(/\r/g, "").trim().split(/\n\s*\n/);
+    var re = /(\d+):(\d+):(\d+)[,.](\d+)\s*-->\s*(\d+):(\d+):(\d+)[,.](\d+)/;
+    var KEY = { important:1, biggest:1, mistake:1, never:1, always:1, best:1, secret:1, free:1, now:1, today:1 };
+    var words = [], end = 0;
+    blocks.forEach(function (b) {
+      var m = b.match(re); if (!m) return;
+      var g = m.slice(1).map(Number);
+      var s = g[0]*3600+g[1]*60+g[2]+g[3]/1000, e = g[4]*3600+g[5]*60+g[6]+g[7]/1000;
+      var toks = b.split("\n").slice(2).join(" ").trim().split(/\s+/).filter(Boolean);
+      if (!toks.length) return;
+      var span = (e - s) / toks.length;
+      toks.forEach(function (tok, i) {
+        words.push({ text: tok, start: +(s + i*span).toFixed(3), dur: +span.toFixed(3),
+                     emphasis: KEY[norm(tok)] ? 0.75 : 0.4 });
+      });
+      end = Math.max(end, e);
+    });
+    return { asset_id: "a1", source_url: sourceUrl || "clip.mp4", duration: +end.toFixed(3),
+             words: words, speech: words.map(function (w) { return [w.start, w.start + w.dur]; }), scenes: [] };
   }
 
   function ffmpeg(model, src, enc) {
@@ -237,7 +341,8 @@
            '" -map "[vout]" -map "[aout]" -c:v ' + enc + ' -b:v 12M -c:a aac -b:a 192k "out.mp4"';
   }
 
-  root.VibeCut = { planFromText: planFromText, edit: edit, ffmpeg: ffmpeg,
+  root.VibeCut = { planFromText: planFromText, edit: edit, decorate: decorate, ffmpeg: ffmpeg,
+                   relayout: relayout, zoomScaleAt: zoomScaleAt, analysisFromSRT: analysisFromSRT,
                    KeepList: KeepList, subtract: subtract, complement: complement };
   if (typeof module !== "undefined" && module.exports) module.exports = root.VibeCut;
 })(typeof globalThis !== "undefined" ? globalThis : this);

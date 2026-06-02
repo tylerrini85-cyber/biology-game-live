@@ -1,15 +1,22 @@
-# VibeCut Web — zero-install browser demo
+# VibeCut Web — zero-install browser apps
 
-A **single self-contained `index.html`** that runs the whole VibeCut vibe →
-edit → preview loop **entirely in your browser**. No server, no install, no
-terminal, no APIs, no video generation — the engine is ported to JavaScript and
-the sample clip data is embedded.
+Two self-contained HTML files that run the whole VibeCut loop **in your
+browser** — no server, install, terminal, APIs, or video generation:
+
+- **`studio.html`** — the **interactive editor**: load your video + `.srt`,
+  vibe-edit, **watch the edit play back live** (cuts + captions + punch-in
+  zoom), **manually lock/delete clips**, and **re-vibe** keeping locked parts.
+- **`index.html`** — a simpler demo (prompt → edit summary), good for a quick look.
 
 ## Use it
 
-**Just open `index.html`** — double-click it, or drag it into any browser.
-Type a prompt, tick effect options, click **Vibe it**, and see the edit
-(timeline of kept-vs-cut, edit plan, caption preview, export command) instantly.
+**Just open the file** — double-click it, or drag it into any browser. For the
+Studio: optionally load a video (for live preview) and a captions `.srt` for it,
+type a prompt, tick effects, **Vibe it**, press **Play edit**, fine-tune clips,
+or **Re-vibe**. Without a video it previews the caption/zoom timing on a
+placeholder using the built-in sample.
+
+Rebuild after engine changes: `python3 build_studio.py` and `python3 build.py`.
 
 ## Want a shareable link?
 
