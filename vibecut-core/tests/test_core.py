@@ -299,6 +299,28 @@ class TestCaptionStylingDepth(unittest.TestCase):
         self.assertIn(",Center,,", ass)
 
 
+class TestSidecars(unittest.TestCase):
+    def test_reframe_pure_helpers(self):
+        from vibecut.sidecars import reframe
+        track = [(0.0, 0.2, 0.5), (0.5, 0.8, 0.5), (1.0, 0.5, 0.5)]
+        sm = reframe.ema_smooth(track, alpha=0.5)
+        self.assertEqual(len(sm), 3)
+        path = reframe.crop_path(sm, 1920, 1080, "9:16")
+        # crop is portrait, within frame, follows subject (x clamped 0..src-cropw)
+        self.assertTrue(all(0 <= x <= 1920 - cw for _, x, y, cw, ch in path))
+        expr = reframe.ffmpeg_crop_expr(path, 1920, 1080)
+        self.assertIn("crop=", expr)
+        self.assertIn("x='", expr)
+
+    def test_broll_top_k_cosine(self):
+        from vibecut.sidecars.broll import top_k_cosine
+        q = [1.0, 0.0]
+        items = [("a", [1.0, 0.0]), ("b", [0.0, 1.0]), ("c", [0.7, 0.7])]
+        ranked = top_k_cosine(q, items, k=2)
+        self.assertEqual(ranked[0][0], "a")      # best match
+        self.assertEqual(len(ranked), 2)
+
+
 class TestPerClipSpeed(unittest.TestCase):
     def setUp(self):
         self.a = AssetAnalysis.load(SAMPLE)

@@ -33,15 +33,16 @@ def _extract_wav(video: str, wav: str) -> None:
                    check=True, capture_output=True)
 
 
-def _transcribe(wav: str, model_size: str, out_json: str) -> None:
+def _transcribe(wav: str, model_size: str, out_json: str, language: str | None = None) -> None:
     try:
         from faster_whisper import WhisperModel
     except ImportError:
         sys.exit("error: faster-whisper not installed. Run:  pip install faster-whisper\n"
                  "       (or pass --transcript with an .srt / Whisper .json to skip this step)")
-    print(f"  transcribing with faster-whisper ({model_size})…")
+    print(f"  transcribing with faster-whisper ({model_size}"
+          + (f", lang={language}" if language else ", auto-detect lang") + ")…")
     model = WhisperModel(model_size, device="auto", compute_type="int8")
-    segments, _info = model.transcribe(wav, word_timestamps=True, vad_filter=True)
+    segments, _info = model.transcribe(wav, language=language, word_timestamps=True, vad_filter=True)
     segs = []
     for s in segments:
         words = [{"word": w.word, "start": w.start, "end": w.end}
@@ -60,6 +61,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default="vibecut_edit.mp4", help="output MP4 (default vibecut_edit.mp4)")
     ap.add_argument("--transcript", help="existing .srt or Whisper .json (skips transcription)")
     ap.add_argument("--whisper", default="base", help="faster-whisper model size (tiny/base/small/medium/large-v3)")
+    ap.add_argument("--language", help="force transcription language (e.g. en, es, fr); default auto-detect")
     ap.add_argument("--encoder", default="mac", choices=["mac", "nvidia", "intel", "amd"])
     ap.add_argument("--media-library", help="JSON of your own clips for b-roll")
     ap.add_argument("--no-zooms", action="store_true")
@@ -82,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
     if not transcript:
         transcript = os.path.join(workdir, "transcript.json")
         print("  [2/4] transcribing")
-        _transcribe(wav, args.whisper, transcript)
+        _transcribe(wav, args.whisper, transcript, language=args.language)
     else:
         print(f"  [2/4] using provided transcript: {transcript}")
 

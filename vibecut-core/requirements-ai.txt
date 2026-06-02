@@ -1,0 +1,18 @@
+# Optional local-AI extras for the sidecars (run on your own machine).
+# The core engine + CLI need NONE of these (stdlib only). Install what you use:
+
+# transcription (oneshot / ingest) -- #13
+faster-whisper
+
+# subject-tracking auto-reframe -- #11
+mediapipe
+opencv-python
+
+# semantic b-roll search -- #12
+open_clip_torch
+faiss-cpu
+pillow
+torch
+
+# (optional) speaker diarization
+# pyannote.audio
