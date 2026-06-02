@@ -75,6 +75,7 @@ window.addEventListener('DOMContentLoaded', function(){
   $('#play').addEventListener('click', togglePlay);
   $('#dlsrt').addEventListener('click', downloadSRT);
   $('#copyff').addEventListener('click', copyFfmpeg);
+  if($('#renderbtn')) $('#renderbtn').addEventListener('click', renderInBrowser);
   $('#undo').addEventListener('click', undo);
   $('#redo').addEventListener('click', redo);
   $('#saveproj').addEventListener('click', saveProject);
@@ -100,6 +101,7 @@ function toggles(){ var t={}; OPTS.forEach(function(o){ t[o[0]]=$('#t_'+o[0]).ch
 
 function loadVideo(e){
   var f=e.target.files[0]; if(!f) return;
+  state.videoFile=f;
   var v=$('#videoEl'); v.src=URL.createObjectURL(f); state.hasVideo=true;
   $('#placeholder').style.display='none'; v.style.display='block';
   v.addEventListener('loadedmetadata', function(){ $('#vstatus').textContent='video loaded ('+v.duration.toFixed(1)+'s)'; }, {once:true});
@@ -313,6 +315,34 @@ function downloadSRT(){
   a.href=URL.createObjectURL(blob); a.download='captions.srt'; a.click();
 }
 function copyFfmpeg(){ navigator.clipboard && navigator.clipboard.writeText($('#ffmpeg').textContent); $('#copyff').textContent='Copied ✓'; setTimeout(function(){$('#copyff').textContent='Copy FFmpeg command';},1500); }
+
+/* ---- in-browser MP4 render via ffmpeg.wasm (#14, beta) ---- */
+function wasmArgs(m){
+  var W=m.profile.width, H=m.profile.height, parts=[], n=m.clips.length;
+  m.clips.forEach(function(c,i){ var sp=c.speed||1, x=(Math.abs(sp-1)>1e-3?",setpts=PTS/"+sp.toFixed(4):"");
+    parts.push("[0:v]trim="+c.src_in.toFixed(3)+":"+c.src_out.toFixed(3)+",setpts=PTS-STARTPTS"+x+",scale="+W+":"+H+",setsar=1[v"+i+"]"); });
+  m.clips.forEach(function(c,i){ parts.push("[0:a]atrim="+c.src_in.toFixed(3)+":"+c.src_out.toFixed(3)+",asetpts=PTS-STARTPTS[a"+i+"]"); });
+  parts.push(m.clips.map(function(_,i){return "[v"+i+"][a"+i+"]";}).join("")+"concat=n="+n+":v=1:a=1[vc][ac]");
+  parts.push("[ac]loudnorm=I=-16:TP=-1.5:LRA=11[ao]");
+  return ["-i","in.mp4","-filter_complex",parts.join(";"),"-map","[vc]","-map","[ao]","-c:v","libx264","-preset","ultrafast","-crf","23","-c:a","aac","-movflags","+faststart","out.mp4"];
+}
+async function renderInBrowser(){
+  if(!state.videoFile){ alert("Load your video file first (top of the page)."); return; }
+  var btn=$('#renderbtn'); var label=btn.textContent; btn.disabled=true; btn.textContent="Loading FFmpeg…";
+  try{
+    var mod=await import("https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");
+    var ff=new mod.FFmpeg();
+    ff.on("progress", function(p){ btn.textContent="Rendering "+Math.round((p.progress||0)*100)+"%"; });
+    await ff.load({ coreURL:"https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js" });
+    await ff.writeFile("in.mp4", new Uint8Array(await state.videoFile.arrayBuffer()));
+    await ff.exec(wasmArgs(state.model));
+    var out=await ff.readFile("out.mp4");
+    var a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([out.buffer],{type:"video/mp4"}));
+    a.download="vibecut-export.mp4"; a.click();
+    btn.textContent="✓ Done"; setTimeout(function(){btn.textContent=label;},2000);
+  }catch(e){ alert("In-browser render failed ("+e+").\nUse the FFmpeg command below (or the CLI) instead."); btn.textContent=label; }
+  btn.disabled=false;
+}
 """
 
 TEMPLATE = """<!doctype html>
@@ -407,7 +437,10 @@ TEMPLATE = """<!doctype html>
     <div class="row" style="margin-bottom:10px">
       <button id="dlsrt" class="ghost">Download captions (.srt)</button>
       <button id="copyff" class="ghost">Copy FFmpeg command</button>
+      <button id="renderbtn">⬇ Render MP4 (beta)</button>
     </div>
+    <div class="muted" style="margin-bottom:8px">Render MP4 (beta) renders the cut + reframed video <em>in your browser</em>
+      (loads FFmpeg WASM, ~30MB first time). Captions/effects burn-in come via the full FFmpeg command / the CLI.</div>
     <div class="muted">To render the finished MP4, run the FFmpeg command (or use
       <code>python -m vibecut.oneshot</code>). Browser preview shows the edit; the desktop app / CLI exports it.</div>
     <pre id="ffmpeg"></pre>
