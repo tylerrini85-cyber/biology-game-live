@@ -125,36 +125,57 @@ function loadSRT(e){
   r.readAsText(f);
 }
 
-// On-device speech-to-text: captions from the user's ACTUAL words (Whisper via
-// transformers.js). First run downloads a small model from a CDN.
+// cached engines (avoid re-downloading on every run)
+var _ff=null, _asr=null;
+async function getFF(setMsg){
+  if(_ff) return _ff;
+  if(setMsg) setMsg('Loading audio engine…');
+  var m=await import('https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
+  _ff=new m.FFmpeg();
+  await _ff.load({ coreURL:'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js' });
+  return _ff;
+}
+async function getASR(setMsg){
+  if(_asr) return _asr;
+  var mod=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+  mod.env.allowLocalModels=false;
+  _asr=await mod.pipeline('automatic-speech-recognition','Xenova/whisper-tiny.en',
+    { progress_callback:function(p){ if(setMsg && p && p.status==='progress' && p.progress) setMsg('Model '+Math.round(p.progress)+'%'); } });
+  return _asr;
+}
+// On-device speech-to-text from the user's ACTUAL words. Audio is extracted with
+// FFmpeg-WASM (robust for any video container) then transcribed with Whisper.
 async function transcribeVideo(){
-  if(!state.videoFile){ showErr('Load your video first (button 1), then Auto-transcribe.'); return; }
-  var btn=$('#transcribe'); var lbl=btn.textContent; btn.disabled=true; btn.textContent='Transcribing…';
+  if(!state.videoFile){ showErr('Load your video first, then it auto-transcribes.'); return; }
+  var btn=$('#transcribe'); var lbl=btn.textContent; btn.disabled=true;
+  var setMsg=function(m){ btn.textContent=m; $('#sstatus').textContent=m; };
   try{
-    // decode the video's audio and resample to 16 kHz mono
-    var ab=await state.videoFile.arrayBuffer();
-    var AC=window.AudioContext||window.webkitAudioContext;
-    var decoded=await (new AC()).decodeAudioData(ab.slice(0));
-    var off=new OfflineAudioContext(1, Math.max(1,Math.ceil(decoded.duration*16000)), 16000);
-    var sn=off.createBufferSource(); sn.buffer=decoded; sn.connect(off.destination); sn.start();
-    var rendered=await off.startRendering();
-    var audio=rendered.getChannelData(0);
-    btn.textContent='Loading model…';
-    var mod=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
-    mod.env.allowLocalModels=false;
-    var asr=await mod.pipeline('automatic-speech-recognition','Xenova/whisper-tiny.en',
-      { progress_callback:function(p){ if(p && p.status==='progress' && p.progress) btn.textContent='Model '+Math.round(p.progress)+'%'; } });
-    btn.textContent='Transcribing audio…';
+    setMsg('Loading audio engine…');
+    var ff=await getFF(setMsg);
+    var ipath='in_'+Date.now()+'.dat';
+    await ff.writeFile(ipath, new Uint8Array(await state.videoFile.arrayBuffer()));
+    setMsg('Extracting audio…');
+    await ff.exec(['-i', ipath, '-vn', '-ac', '1', '-ar', '16000', '-f', 'f32le', 'pcm.raw']);
+    var raw=await ff.readFile('pcm.raw');
+    var u8=(raw instanceof Uint8Array)?raw:new Uint8Array(raw);
+    var n=u8.byteLength - (u8.byteLength % 4);
+    var audio=new Float32Array(u8.buffer.slice(u8.byteOffset, u8.byteOffset+n));
+    try{ ff.deleteFile(ipath); ff.deleteFile('pcm.raw'); }catch(e){}
+    if(!audio.length) throw new Error('no audio track found');
+    var dur=audio.length/16000;
+    setMsg('Loading model…');
+    var asr=await getASR(setMsg);
+    setMsg('Transcribing… (' + dur.toFixed(0) + 's)');
     var out=await asr(audio,{return_timestamps:'word', chunk_length_s:30, stride_length_s:5});
     var words=(out.chunks||[]).filter(function(c){ return c.timestamp && c.timestamp[0]!=null; })
       .map(function(c){ var s=c.timestamp[0], e=(c.timestamp[1]!=null?c.timestamp[1]:s+0.3); return { text:(c.text||'').trim(), start:s, dur:Math.max(0.05,e-s) }; })
       .filter(function(w){ return w.text; });
     if(!words.length) throw new Error('no speech detected');
-    state.analysis=VibeCut.analysisFromWords(words, decoded.duration, state.videoFile.name);
+    state.analysis=VibeCut.analysisFromWords(words, dur, state.videoFile.name);
     $('#sstatus').textContent='✓ transcribed '+words.length+' words from your video';
     doVibe(null);
-    btn.textContent='✓ Transcribed';
-  }catch(err){ showErr('Auto-transcribe failed ('+(err&&err.message||err)+'). Tip: load an .srt of your video instead.'); btn.textContent=lbl; }
+    btn.textContent='Re-transcribe';
+  }catch(err){ showErr('Auto-transcribe failed ('+(err&&err.message||err)+'). Tip: load an .srt of your video instead.'); $('#sstatus').textContent='transcription failed — using sample or load .srt'; btn.textContent=lbl; }
   btn.disabled=false;
 }
 
@@ -379,10 +400,7 @@ async function renderInBrowser(){
   if(!state.videoFile){ alert("Load your video file first (top of the page)."); return; }
   var btn=$('#renderbtn'); var label=btn.textContent; btn.disabled=true; btn.textContent="Loading FFmpeg…";
   try{
-    var mod=await import("https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js");
-    var ff=new mod.FFmpeg();
-    ff.on("progress", function(p){ btn.textContent="Rendering "+Math.round((p.progress||0)*100)+"%"; });
-    await ff.load({ coreURL:"https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js" });
+    var ff=await getFF(function(m){ btn.textContent=m; });
     await ff.writeFile("in.mp4", new Uint8Array(await state.videoFile.arrayBuffer()));
     await ff.exec(wasmArgs(state.model));
     var out=await ff.readFile("out.mp4");
@@ -499,7 +517,7 @@ TEMPLATE = """<!doctype html>
     <pre id="ffmpeg"></pre>
   </div>
 
-  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-7 (1-file auto-captions)</b></div>
+  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-8 (robust transcribe)</b></div>
 </div>
 <script>__ENGINE__</script>
 <script>
