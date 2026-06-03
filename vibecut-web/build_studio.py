@@ -53,6 +53,10 @@ CSS = """
   .stats{display:flex;gap:18px;flex-wrap:wrap;margin-top:6px}
   pre{white-space:pre-wrap;word-break:break-all;background:#0b0d12;border:1px solid var(--line);border-radius:9px;padding:12px;font-size:11.5px}
   .muted{color:var(--muted);font-size:13px}.foot{color:var(--muted);font-size:12px;margin-top:22px}
+  .cmdlog{max-height:200px;overflow-y:auto;background:#0b0d12;border:1px solid var(--line);border-radius:9px;padding:10px;font-size:13px}
+  .cmsg{padding:4px 0;line-height:1.5}.cmsg.you{color:var(--txt)}.cmsg.app{color:var(--muted)}
+  .cmsg .who{display:inline-block;min-width:34px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--accent);font-weight:700}
+  .cmsg.app .who{color:var(--kept)}
   a.btn{color:var(--accent);text-decoration:none;font-weight:700}
 """
 
@@ -76,6 +80,8 @@ function boot(){
   if($('#music')) $('#music').addEventListener('change', function(e){ var f=e.target.files[0]; if(f){ state.musicName=f.name; $('#mstatus').textContent='music: '+f.name; doVibe(null); } });
   $('#vibe').addEventListener('click', function(){ doVibe(null); });
   $('#revibe').addEventListener('click', function(){ doVibe(state.model); });
+  if($('#cmdsend')) $('#cmdsend').addEventListener('click', sendCommand);
+  if($('#cmd')) $('#cmd').addEventListener('keydown', function(e){ if(e.key==='Enter') sendCommand(); });
   $('#play').addEventListener('click', togglePlay);
   $('#dlsrt').addEventListener('click', downloadSRT);
   $('#copyff').addEventListener('click', copyFfmpeg);
@@ -92,6 +98,7 @@ function boot(){
   if($('#capanim')) $('#capanim').addEventListener('change', capExtras);
   if($('#ovadd')) $('#ovadd').addEventListener('click', addOverlay);
   doVibe(null);  // initial edit on the sample
+  renderCmdLog();
 }
 // run boot now if the DOM is already parsed (scripts are at end of body),
 // otherwise wait for DOMContentLoaded -- bulletproof either way
@@ -203,6 +210,90 @@ function doVibe(prev){
 function applyAspect(){
   var vert = state.model.profile.height > state.model.profile.width;
   $('#preview').classList.toggle('vert', vert);
+}
+
+// ---- Chat-style command bar -------------------------------------------------
+// Each command refines the CURRENT edit. The engine is declarative, so we keep a
+// running list of commands, append the newest, and re-plan over the base prompt
+// (locked clips are preserved by passing the current model as prev).
+state.cmds = [];            // accumulated refinement commands
+state.cmdlog = [];          // [{role:'you'|'app', text}]
+function logCmd(role, text){ state.cmdlog.push({role:role, text:text}); renderCmdLog(); }
+function renderCmdLog(){
+  var el=$('#cmdlog'); if(!el) return;
+  el.innerHTML = state.cmdlog.length ? state.cmdlog.map(function(m){
+    return '<div class="cmsg '+m.role+'"><span class="who">'+(m.role==='you'?'you':'vibe')+'</span> '+esc(m.text)+'</div>';
+  }).join('') : '<div class="muted">No commands yet. Type one below and press Enter.</div>';
+  el.scrollTop = el.scrollHeight;
+}
+// keep the authoritative checkboxes in sync with a chat command, so a typed
+// command (e.g. "make it vertical") wins instead of being overridden by a
+// still-unchecked toggle.
+function syncToggles(lc){
+  function setChk(id,v){ var e=$(id); if(e){ e.checked=v; } }
+  function setSel(id,v){ var e=$(id); if(e){ e.value=v; } }
+  if(/punchy|punch|zoom|energetic|dynamic/.test(lc)) setChk('#t_zooms',true);
+  if(/calm|subtle|relaxed|gentle|no zoom|stop zoom/.test(lc)) setChk('#t_zooms',false);
+  if(/vertical|9:16|tiktok|reels|shorts|story|portrait/.test(lc)) setChk('#t_reframe',true);
+  if(/horizontal|landscape|16:9|widescreen|full.?frame/.test(lc)) setChk('#t_reframe',false);
+  if(/b-?roll|broll|cutaway|stock footage/.test(lc)) setChk('#t_broll',true);
+  if(/enhance|denoise|clean.{0,6}audio|clarity/.test(lc)) setChk('#t_enhance',true);
+  // color look dropdown is authoritative -> set it when a look word appears
+  if(/warm/.test(lc)) setSel('#look','warm');
+  else if(/cool|moody/.test(lc)) setSel('#look','cool');
+  else if(/black and white|b&w|grayscale|monochrome/.test(lc)) setSel('#look','bw');
+  else if(/vivid|saturated|vibrant/.test(lc)) setSel('#look','vivid');
+  else if(/film|cinematic|vintage|filmic/.test(lc)) setSel('#look','film');
+  else if(/bright/.test(lc)) setSel('#look','bright');
+  else if(/no look|natural look|remove look/.test(lc)) setSel('#look','none');
+  // caption style dropdown
+  if(/bold|karaoke|word.?by.?word|hormozi/.test(lc)) setSel('#capstyle','bold-karaoke');
+  else if(/hype/.test(lc)) setSel('#capstyle','hype');
+  else if(/neon/.test(lc)) setSel('#capstyle','neon');
+  else if(/clean caption/.test(lc)) setSel('#capstyle','clean');
+  else if(/minimal caption|simple caption/.test(lc)) setSel('#capstyle','minimal');
+  if(/uppercase|all.?caps/.test(lc)) setChk('#t_upper',true);
+  // transition dropdown (default "none" would otherwise delete a typed transition)
+  var dir=/right/.test(lc)?'right':/up/.test(lc)?'up':/down/.test(lc)?'down':'left';
+  if(/dip to black|dip-to-black/.test(lc)) setSel('#transition','dip-to-black');
+  else if(/dip to white|dip-to-white/.test(lc)) setSel('#transition','dip-to-white');
+  else if(/cross dissolve|cross-dissolve|crossfade/.test(lc)) setSel('#transition','cross-dissolve');
+  else if(/film dissolve/.test(lc)) setSel('#transition','film-dissolve');
+  else if(/additive/.test(lc)) setSel('#transition','additive-dissolve');
+  else if(/wipe/.test(lc)) setSel('#transition','wipe-'+dir);
+  else if(/slide/.test(lc)&&!/slideshow/.test(lc)) setSel('#transition','slide-'+dir);
+  else if(/iris/.test(lc)) setSel('#transition','iris');
+  else if(/zoom transition|zoom dissolve/.test(lc)) setSel('#transition','zoom');
+  else if(/dissolve|fade/.test(lc)) setSel('#transition','fade');
+  else if(/no transition|hard cut|straight cut/.test(lc)) setSel('#transition','none');
+}
+function opSummary(rep){
+  if(!rep || !rep.ops || !rep.ops.length) return 'no recognized change';
+  return rep.ops.map(function(o){ return o[0]; }).join(' · ');
+}
+function sendCommand(){
+  var inp=$('#cmd'); if(!inp) return;
+  var c=(inp.value||'').trim(); if(!c) return;
+  inp.value=''; logCmd('you', c);
+  var lc=c.toLowerCase();
+  // meta commands handled directly
+  if(/^(undo|undo that|go back)$/.test(lc)){ if(undoStack.length){ undo(); if(state.cmds.length) state.cmds.pop(); logCmd('app','↶ undid the last change'); } else logCmd('app','nothing to undo'); return; }
+  if(/^(redo|redo that)$/.test(lc)){ if(redoStack.length){ redo(); logCmd('app','↷ redid'); } else logCmd('app','nothing to redo'); return; }
+  if(/^(reset|start over|clear|undo all)$/.test(lc)){ state.cmds=[]; $('#prompt').value='clean it up and add captions'; doVibe(null); logCmd('app','↺ reset to a fresh edit'); return; }
+  // otherwise: a refinement -> accumulate and re-vibe over the current model
+  syncToggles(lc);
+  state.cmds.push(c);
+  var combined = $('#prompt').value + ' ' + state.cmds.join(' ');
+  try{
+    stopPlay();
+    if(state.model) pushUndo();   // so "undo" reverts this command
+    state.plan = VibeCut.planFromText(combined, toggles());
+    var r = VibeCut.edit(state.analysis, state.plan, LIB, state.model);
+    state.model=r.model; state.report=r.report;
+    if(state.musicName) state.model.music={url:state.musicName,gain:0.25,duck:true};
+    applyAspect(); render();
+    logCmd('app', '✓ '+opSummary(r.report)+'  →  '+r.report.final.toFixed(0)+'s, '+r.model.clips.length+' clips');
+  }catch(err){ showErr('command failed: '+(err&&err.message||err)); logCmd('app','⚠ could not apply that'); }
 }
 
 function render(){
@@ -495,6 +586,19 @@ TEMPLATE = """<!doctype html>
     </div>
   </div>
 
+  <div class="card">
+    <div class="label">Command bar &mdash; keep typing what you want (like texting an editor)</div>
+    <div id="cmdlog" class="cmdlog"></div>
+    <div class="row" style="margin-top:8px">
+      <input type="text" id="cmd" placeholder="e.g. make it punchy · warm look · bold captions · make it vertical · speed up · under 30s · undo"
+        style="flex:1;min-width:200px">
+      <button id="cmdsend">Send &#9654;</button>
+    </div>
+    <div class="muted" style="margin-top:6px">Each command refines the current edit (locked &#128274; clips are kept).
+      Try <em>undo</em>, <em>redo</em>, or <em>reset</em> any time. This is the in-app command box &mdash;
+      you never need Claude Code to edit a video.</div>
+  </div>
+
   <div class="card"><div class="label">Edit plan</div><div id="plan"></div>
     <div class="stats" id="stats"></div></div>
 
@@ -523,7 +627,7 @@ TEMPLATE = """<!doctype html>
     <pre id="ffmpeg"></pre>
   </div>
 
-  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-9 (transcribe+fallback)</b></div>
+  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-10 (command-bar)</b></div>
 </div>
 <script>__ENGINE__</script>
 <script>
