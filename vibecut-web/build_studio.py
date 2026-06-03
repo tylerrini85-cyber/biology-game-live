@@ -170,7 +170,13 @@ async function transcribeVideo(){
     var words=(out.chunks||[]).filter(function(c){ return c.timestamp && c.timestamp[0]!=null; })
       .map(function(c){ var s=c.timestamp[0], e=(c.timestamp[1]!=null?c.timestamp[1]:s+0.3); return { text:(c.text||'').trim(), start:s, dur:Math.max(0.05,e-s) }; })
       .filter(function(w){ return w.text; });
+    // fallback: if no word timestamps, split the full transcript evenly over the duration
+    if(words.length<=1 && out.text && out.text.trim()){
+      var toks=out.text.trim().split(/\s+/), span=dur/Math.max(1,toks.length);
+      words=toks.map(function(t,i){ return { text:t, start:+(i*span).toFixed(3), dur:+(span*0.9).toFixed(3) }; });
+    }
     if(!words.length) throw new Error('no speech detected');
+    console.log('VibeCut: transcribed', words.length, 'words; first:', words.slice(0,6).map(function(w){return w.text;}).join(' '));
     state.analysis=VibeCut.analysisFromWords(words, dur, state.videoFile.name);
     $('#sstatus').textContent='✓ transcribed '+words.length+' words from your video';
     doVibe(null);
@@ -517,7 +523,7 @@ TEMPLATE = """<!doctype html>
     <pre id="ffmpeg"></pre>
   </div>
 
-  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-8 (robust transcribe)</b></div>
+  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-9 (transcribe+fallback)</b></div>
 </div>
 <script>__ENGINE__</script>
 <script>
