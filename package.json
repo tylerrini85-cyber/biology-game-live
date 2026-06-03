@@ -1,16 +1,13 @@
 {
-  "name": "biology-game-live",
+  "name": "vibecut-studio",
   "version": "1.0.0",
-  "description": "Live multiplayer wrapper for the Cellular Respiration biology game — Kahoot-style host + join sessions.",
-  "main": "server.js",
+  "description": "VibeCut Studio — local-first vibe video editor (cuts, captions, effects). Standalone web app.",
+  "main": "vibecut-server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node vibecut-server.js"
   },
   "engines": {
     "node": ">=18"
-  },
-  "dependencies": {
-    "ws": "^8.18.0"
   },
   "private": true,
   "license": "MIT"
