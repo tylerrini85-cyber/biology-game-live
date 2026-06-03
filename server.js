@@ -150,9 +150,11 @@ const server = http.createServer((req, res) => {
       return res.end('Not Found');
     }
     const ext = path.extname(filePath).toLowerCase();
+    // VibeCut files: never cache, so updates always show immediately
+    const noStore = filePath.indexOf('vibecut-web') !== -1;
     res.writeHead(200, {
       'Content-Type': MIME[ext] || 'application/octet-stream',
-      'Cache-Control': 'no-cache'
+      'Cache-Control': noStore ? 'no-store, max-age=0' : 'no-cache'
     });
     res.end(data);
   });
