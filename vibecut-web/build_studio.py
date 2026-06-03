@@ -113,6 +113,8 @@ function loadVideo(e){
   var v=$('#videoEl'); v.src=URL.createObjectURL(f); state.hasVideo=true;
   $('#placeholder').style.display='none'; v.style.display='block';
   v.addEventListener('loadedmetadata', function(){ $('#vstatus').textContent='video loaded ('+v.duration.toFixed(1)+'s)'; }, {once:true});
+  // one file: transcribe THIS video automatically so captions match your speech
+  transcribeVideo();
 }
 function loadSRT(e){
   var f=e.target.files[0]; if(!f) return;
@@ -403,15 +405,14 @@ TEMPLATE = """<!doctype html>
 
   <div class="card">
     <div class="row">
-      <div style="flex:1;min-width:200px"><div class="label">1 &middot; Your video (optional, for live preview)</div>
+      <div style="flex:1;min-width:240px"><div class="label">Upload your video &mdash; that&rsquo;s it</div>
         <input type="file" id="video" accept="video/*"> <span class="muted" id="vstatus"></span></div>
-      <div style="flex:1;min-width:200px"><div class="label">2 &middot; Captions for your video</div>
-        <button id="transcribe" class="ghost sm">🎙 Auto-transcribe my video</button>
-        <input type="file" id="srt" accept=".srt" title="or load an .srt"> <span class="muted" id="sstatus">using built-in sample</span></div>
+      <div style="flex:1;min-width:200px"><div class="label">Captions (auto from your video)</div>
+        <button id="transcribe" class="ghost sm">Re-transcribe</button>
+        <input type="file" id="srt" accept=".srt" title="optional: load an .srt instead"> <span class="muted" id="sstatus">using built-in sample</span></div>
     </div>
-    <div class="muted" style="margin-top:6px">Captions come from <b>your</b> words once you load a video and click
-      <b>Auto-transcribe</b> (on-device speech-to-text; first run downloads a small model), or load a matching <b>.srt</b>.
-      Until then the built-in sample text is shown.</div>
+    <div class="muted" style="margin-top:6px">Just upload <b>one file</b> &mdash; your video is <b>auto-transcribed on-device</b>
+      and captions match your speech (first run downloads a small model). The .srt picker is an optional alternative.</div>
     <div style="margin-top:14px"><div class="label">3 &middot; Describe the edit</div>
       <input type="text" id="prompt" value="clean it up and add captions"></div>
     <div class="toggles" id="toggles"></div>
@@ -498,7 +499,7 @@ TEMPLATE = """<!doctype html>
     <pre id="ffmpeg"></pre>
   </div>
 
-  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-6 (auto-captions)</b></div>
+  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-7 (1-file auto-captions)</b></div>
 </div>
 <script>__ENGINE__</script>
 <script>
