@@ -53,9 +53,13 @@
     <div class="row">
       <div style="flex:1;min-width:200px"><div class="label">1 &middot; Your video (optional, for live preview)</div>
         <input type="file" id="video" accept="video/*"> <span class="muted" id="vstatus"></span></div>
-      <div style="flex:1;min-width:200px"><div class="label">2 &middot; Captions .srt (for your video)</div>
-        <input type="file" id="srt" accept=".srt"> <span class="muted" id="sstatus">using built-in sample</span></div>
+      <div style="flex:1;min-width:200px"><div class="label">2 &middot; Captions for your video</div>
+        <button id="transcribe" class="ghost sm">🎙 Auto-transcribe my video</button>
+        <input type="file" id="srt" accept=".srt" title="or load an .srt"> <span class="muted" id="sstatus">using built-in sample</span></div>
     </div>
+    <div class="muted" style="margin-top:6px">Captions come from <b>your</b> words once you load a video and click
+      <b>Auto-transcribe</b> (on-device speech-to-text; first run downloads a small model), or load a matching <b>.srt</b>.
+      Until then the built-in sample text is shown.</div>
     <div style="margin-top:14px"><div class="label">3 &middot; Describe the edit</div>
       <input type="text" id="prompt" value="clean it up and add captions"></div>
     <div class="toggles" id="toggles"></div>
@@ -142,7 +146,7 @@
     <pre id="ffmpeg"></pre>
   </div>
 
-  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-5 (fixed overlay)</b></div>
+  <div class="foot">VibeCut Studio &middot; interactive reference editor &middot; no APIs, no generation. &middot; <b>build: fullframe-6 (auto-captions)</b></div>
 </div>
 <script>/* VibeCut browser engine — a faithful JS port of vibecut-core's logic so the
  * whole vibe -> plan -> edit -> preview loop runs entirely in the browser
@@ -562,6 +566,14 @@
     });
     return z;
   }
+  // build analysis from a transcript's word list [{text,start,dur}]
+  function analysisFromWords(words, duration, sourceUrl) {
+    var w = (words || []).filter(function (x) { return x.text && x.dur > 0; });
+    var dur = duration || (w.length ? w[w.length - 1].start + w[w.length - 1].dur : 0);
+    return { asset_id: "a1", source_url: sourceUrl || "clip.mp4", duration: +(+dur).toFixed(3),
+             words: w.map(function (x) { return { text: x.text, start: +(+x.start).toFixed(3), dur: +(+x.dur).toFixed(3), emphasis: 0.45 }; }),
+             speech: w.map(function (x) { return [+(+x.start).toFixed(3), +(+(x.start + x.dur)).toFixed(3)]; }), scenes: [] };
+  }
   // build analysis from an .srt (no audio): words spread per cue, default emphasis
   function analysisFromSRT(srt, sourceUrl) {
     var blocks = srt.replace(/\r/g, "").trim().split(/\n\s*\n/);
@@ -666,7 +678,7 @@
   }
 
   root.VibeCut = { planFromText: planFromText, edit: edit, decorate: decorate, ffmpeg: ffmpeg,
-                   relayout: relayout, zoomScaleAt: zoomScaleAt, analysisFromSRT: analysisFromSRT,
+                   relayout: relayout, zoomScaleAt: zoomScaleAt, analysisFromSRT: analysisFromSRT, analysisFromWords: analysisFromWords,
                    splitClip: splitClip, trimClip: trimClip, applyClipSpeed: applyClipSpeed, LOOK_CSS: LOOK_CSS,
                    KeepList: KeepList, subtract: subtract, complement: complement };
   if (typeof module !== "undefined" && module.exports) module.exports = root.VibeCut;
@@ -691,6 +703,7 @@ function boot(){
     box.insertAdjacentHTML('beforeend','<label><input type="checkbox" id="t_'+o[0]+'"'+(on?' checked':'')+'> '+o[1]+'</label>'); });
   $('#video').addEventListener('change', loadVideo);
   $('#srt').addEventListener('change', loadSRT);
+  if($('#transcribe')) $('#transcribe').addEventListener('click', transcribeVideo);
   if($('#music')) $('#music').addEventListener('change', function(e){ var f=e.target.files[0]; if(f){ state.musicName=f.name; $('#mstatus').textContent='music: '+f.name; doVibe(null); } });
   $('#vibe').addEventListener('click', function(){ doVibe(null); });
   $('#revibe').addEventListener('click', function(){ doVibe(state.model); });
@@ -739,6 +752,39 @@ function loadSRT(e){
     $('#sstatus').textContent='captions loaded ('+state.analysis.words.length+' words, '+state.analysis.duration.toFixed(0)+'s)';
     doVibe(null); };
   r.readAsText(f);
+}
+
+// On-device speech-to-text: captions from the user's ACTUAL words (Whisper via
+// transformers.js). First run downloads a small model from a CDN.
+async function transcribeVideo(){
+  if(!state.videoFile){ showErr('Load your video first (button 1), then Auto-transcribe.'); return; }
+  var btn=$('#transcribe'); var lbl=btn.textContent; btn.disabled=true; btn.textContent='Transcribing…';
+  try{
+    // decode the video's audio and resample to 16 kHz mono
+    var ab=await state.videoFile.arrayBuffer();
+    var AC=window.AudioContext||window.webkitAudioContext;
+    var decoded=await (new AC()).decodeAudioData(ab.slice(0));
+    var off=new OfflineAudioContext(1, Math.max(1,Math.ceil(decoded.duration*16000)), 16000);
+    var sn=off.createBufferSource(); sn.buffer=decoded; sn.connect(off.destination); sn.start();
+    var rendered=await off.startRendering();
+    var audio=rendered.getChannelData(0);
+    btn.textContent='Loading model…';
+    var mod=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+    mod.env.allowLocalModels=false;
+    var asr=await mod.pipeline('automatic-speech-recognition','Xenova/whisper-tiny.en',
+      { progress_callback:function(p){ if(p && p.status==='progress' && p.progress) btn.textContent='Model '+Math.round(p.progress)+'%'; } });
+    btn.textContent='Transcribing audio…';
+    var out=await asr(audio,{return_timestamps:'word', chunk_length_s:30, stride_length_s:5});
+    var words=(out.chunks||[]).filter(function(c){ return c.timestamp && c.timestamp[0]!=null; })
+      .map(function(c){ var s=c.timestamp[0], e=(c.timestamp[1]!=null?c.timestamp[1]:s+0.3); return { text:(c.text||'').trim(), start:s, dur:Math.max(0.05,e-s) }; })
+      .filter(function(w){ return w.text; });
+    if(!words.length) throw new Error('no speech detected');
+    state.analysis=VibeCut.analysisFromWords(words, decoded.duration, state.videoFile.name);
+    $('#sstatus').textContent='✓ transcribed '+words.length+' words from your video';
+    doVibe(null);
+    btn.textContent='✓ Transcribed';
+  }catch(err){ showErr('Auto-transcribe failed ('+(err&&err.message||err)+'). Tip: load an .srt of your video instead.'); btn.textContent=lbl; }
+  btn.disabled=false;
 }
 
 function doVibe(prev){

@@ -416,6 +416,14 @@
     });
     return z;
   }
+  // build analysis from a transcript's word list [{text,start,dur}]
+  function analysisFromWords(words, duration, sourceUrl) {
+    var w = (words || []).filter(function (x) { return x.text && x.dur > 0; });
+    var dur = duration || (w.length ? w[w.length - 1].start + w[w.length - 1].dur : 0);
+    return { asset_id: "a1", source_url: sourceUrl || "clip.mp4", duration: +(+dur).toFixed(3),
+             words: w.map(function (x) { return { text: x.text, start: +(+x.start).toFixed(3), dur: +(+x.dur).toFixed(3), emphasis: 0.45 }; }),
+             speech: w.map(function (x) { return [+(+x.start).toFixed(3), +(+(x.start + x.dur)).toFixed(3)]; }), scenes: [] };
+  }
   // build analysis from an .srt (no audio): words spread per cue, default emphasis
   function analysisFromSRT(srt, sourceUrl) {
     var blocks = srt.replace(/\r/g, "").trim().split(/\n\s*\n/);
@@ -520,7 +528,7 @@
   }
 
   root.VibeCut = { planFromText: planFromText, edit: edit, decorate: decorate, ffmpeg: ffmpeg,
-                   relayout: relayout, zoomScaleAt: zoomScaleAt, analysisFromSRT: analysisFromSRT,
+                   relayout: relayout, zoomScaleAt: zoomScaleAt, analysisFromSRT: analysisFromSRT, analysisFromWords: analysisFromWords,
                    splitClip: splitClip, trimClip: trimClip, applyClipSpeed: applyClipSpeed, LOOK_CSS: LOOK_CSS,
                    KeepList: KeepList, subtract: subtract, complement: complement };
   if (typeof module !== "undefined" && module.exports) module.exports = root.VibeCut;
